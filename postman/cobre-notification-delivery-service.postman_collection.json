@@ -75,7 +75,7 @@
   "item": [
     {
       "name": "1 · Demostración",
-      "description": "El guion de la presentación, en orden. Recorre el ciclo completo de una notificación: se publica en el bus, se entrega, se registra.\n\nSolo hay **un caso de error**, y está a propósito: es el que dispara los reintentos con backoff exponencial y jitter, que es el corazón del ejercicio.\n\n| # | Qué muestra |\n|---|---|\n| 1 | El cliente cambia credenciales por un token |\n| 2 | La plataforma publica un evento en el bus |\n| 3 | Entregado al webhook en el primer intento |\n| 4 | Se publica un evento cuyo destino va a fallar |\n| 5 | El destino falla, se reintenta con backoff y se agota |\n| 6 | Reenvío manual: reabre el ciclo y responde 202 |\n| 7 | La misma notificación, ahora entregada |\n\nEl paso 5 espera unos segundos a que ocurran los reintentos. Es buen momento para mostrar la terminal del receptor, donde se ven llegar en vivo.\n\nNo depende de datos sembrados: cada ejecución crea sus propios eventos, así que se puede correr las veces que haga falta.",
+      "description": "El guion de la presentación, en orden. Recorre el ciclo completo de una notificación: se publica en el bus, se entrega, se registra.\n\nSolo hay **un caso de error**, y está a propósito: es el que dispara los reintentos con backoff exponencial y jitter, que es el corazón del ejercicio.\n\n| # | Qué muestra |\n|---|---|\n| 1 | El cliente cambia credenciales por un token |\n| 2 | *(preparación)* se publica un evento en el bus |\n| 3 | Entregado al webhook en el primer intento |\n| 4 | *(preparación)* se publica un evento cuyo destino fallará |\n| 5 | El destino falla, se reintenta con backoff y se agota |\n| 6 | Reenvío manual: reabre el ciclo y responde 202 |\n| 7 | La misma notificación, ahora entregada |\n\nEl paso 5 espera unos segundos a que ocurran los reintentos. Es buen momento para mostrar la terminal del receptor, donde se ven llegar en vivo.\n\nNo depende de datos sembrados: cada ejecución crea sus propios eventos, así que se puede correr las veces que haga falta.\n\nLos pasos 2 y 4 son preparación: publicar en el bus es del emisor, no de este servicio. Este consume eventos y expone consultas y reenvíos; lo que se demuestra son los pasos 3, 5, 6 y 7.",
       "item": [
         {
           "name": "1 · Obtener token",
@@ -122,7 +122,7 @@
           }
         },
         {
-          "name": "2 · La plataforma publica un evento",
+          "name": "2 · Preparación · la plataforma publica un evento",
           "event": [
             {
               "listen": "prerequest",
@@ -139,18 +139,6 @@
                   "    content: 'Transferencia recibida por $1.500.000',",
                   "    created_at: new Date().toISOString()",
                   "}));"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('El bus acepta el evento', () => pm.response.to.have.status(200));",
-                  "pm.test('Quedo enrutado a la cola del servicio', () =>",
-                  "    pm.expect(pm.response.json().routed).to.be.true);",
-                  "console.log('Evento publicado: ' + pm.collectionVariables.get('ok_event_id'));"
                 ]
               }
             }
@@ -193,7 +181,7 @@
                 "publish"
               ]
             },
-            "description": "Simula a la plataforma de Cobre publicando un evento de negocio en su bus. Se usa la API de gestión de RabbitMQ para no salir de Postman.\n\nEl servicio lo consume, confirma que el cliente tenga suscripción activa y lo entrega."
+            "description": "**Esto no es parte del servicio.** Simula a la plataforma de Cobre publicando en su bus, que es lo que hace falta para disparar la prueba.\n\nQue el mensaje quede bien encolado es responsabilidad del emisor y del broker. Este servicio es un consumidor: su responsabilidad empieza cuando el evento le llega, y por eso aquí no se afirma nada sobre el resultado."
           }
         },
         {
@@ -247,7 +235,7 @@
           }
         },
         {
-          "name": "4 · Un evento cuyo destino va a fallar",
+          "name": "4 · Preparación · publica un evento cuyo destino fallará",
           "event": [
             {
               "listen": "prerequest",
@@ -266,17 +254,6 @@
                   "    content: 'Pago con tarjeta por $150.00',",
                   "    created_at: new Date().toISOString()",
                   "}));"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('El bus acepta el evento', () => pm.response.to.have.status(200));",
-                  "pm.test('Quedo enrutado', () => pm.expect(pm.response.json().routed).to.be.true);",
-                  "console.log('Evento que fallara: ' + pm.collectionVariables.get('retry_event_id'));"
                 ]
               }
             }
@@ -319,7 +296,7 @@
                 "publish"
               ]
             },
-            "description": "Mismo flujo que el paso 2, pero el receptor rechazará los dos primeros intentos con 503.\n\nBuen momento para mostrar la terminal del receptor: ahí se ven llegar los intentos en vivo, separados por el backoff."
+            "description": "**Esto no es parte del servicio.** Simula a la plataforma de Cobre publicando en su bus, que es lo que hace falta para disparar la prueba.\n\nQue el mensaje quede bien encolado es responsabilidad del emisor y del broker. Este servicio es un consumidor: su responsabilidad empieza cuando el evento le llega, y por eso aquí no se afirma nada sobre el resultado."
           }
         },
         {
