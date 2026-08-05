@@ -2,13 +2,23 @@
   "info": {
     "_postman_id": "b7c1e2a4-9f3d-4c1a-8e52-3f0a6d5b2c11",
     "name": "Cobre — Notification Delivery Service",
-    "description": "Colección organizada en dos carpetas.\n\n**1 · Demostración** — las 7 peticiones del guion de la presentación, en orden. Menos de dos minutos.\n\n**2 · Cobertura completa** — los 14 casos restantes, para revisar a fondo.\n\n**Antes de empezar**\n\n1. `docker compose up -d`\n2. `python3 scripts/webhook-receiver.py`\n3. `SPRING_PROFILES_ACTIVE=local ./gradlew bootRun`\n\nAjusta `base_url` si no usas el puerto 8080.\n\nLas peticiones encadenan variables: el token se guarda al obtenerlo y el identificador de una notificación fallida se captura del listado filtrado.\n\n> Los pasos de reenvío necesitan que `CLIENT002` tenga una notificación en `failed`. En una base recién sembrada es `EVT003`. Si ya la reenviaste, vuelve a sembrar con `docker compose down -v && docker compose up -d`.",
+    "description": "Dos carpetas.\n\n**1 · Demostración** — el guion de la presentación, de punta a punta. Se publica un evento en el bus y se ve entregado; se publica otro cuyo destino falla, se ve el ciclo de reintentos con backoff hasta agotarse, y se reenvía manualmente hasta entregarlo. Todo son casos de éxito salvo uno, que existe justamente para disparar los reintentos.\n\nNo depende de datos sembrados: cada ejecución crea sus propios eventos y se puede correr las veces que haga falta.\n\n**2 · API self-service** — lo que consume un cliente de Cobre. Es la referencia del contrato: las tres operaciones del enunciado más la obtención del token, y las dos respuestas de error que un integrador necesita conocer.\n\n**Antes de empezar**\n\n1. `docker compose up -d`\n2. `python3 scripts/webhook-receiver.py`\n3. `SPRING_PROFILES_ACTIVE=local ./gradlew bootRun`\n\nEl receptor responde 200 a todo, salvo a los eventos cuyo identificador contiene `FALLA`: esos rechazan los tres intentos del ciclo —agotándolo— y aceptan a partir del cuarto, que es el primero del reenvío manual. Por eso una misma sesión muestra la entrega limpia, el ciclo de reintentos agotándose y la recuperación por reenvío, sin tocar nada entre medias.\n\nAjusta `base_url` y `rabbit_url` si cambiaste los puertos.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     {
       "key": "base_url",
       "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "rabbit_url",
+      "value": "http://localhost:15672",
+      "type": "string"
+    },
+    {
+      "key": "platform_exchange",
+      "value": "cobre.platform.events",
       "type": "string"
     },
     {
@@ -47,6 +57,16 @@
       "type": "string"
     },
     {
+      "key": "ok_event_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "retry_event_id",
+      "value": "",
+      "type": "string"
+    },
+    {
       "key": "failed_event_id",
       "value": "",
       "type": "string"
@@ -54,11 +74,11 @@
   ],
   "item": [
     {
-      "name": "1 · Demostración (7 peticiones)",
-      "description": "El guion de la presentación: una petición por cada capacidad que pide el enunciado, más las dos respuestas de seguridad que más dicen.\n\nSe corre esta carpeta sola con el Collection Runner. Toma menos de dos minutos.\n\n| # | Qué demuestra |\n|---|---|\n| 1 | El cliente cambia credenciales por un token |\n| 2 | Consulta con filtro por estado de entrega |\n| 3 | Detalle con la bitácora completa de intentos |\n| 4 | Una notificación ajena responde 404, no 403 |\n| 5 | Reenvío aceptado con 202 |\n| 6 | Repetirlo da 409: solo se reenvía lo que falló |\n| 7 | Un token sin permiso de reenvío da 403 |",
+      "name": "1 · Demostración",
+      "description": "El guion de la presentación, en orden. Recorre el ciclo completo de una notificación: se publica en el bus, se entrega, se registra.\n\nSolo hay **un caso de error**, y está a propósito: es el que dispara los reintentos con backoff exponencial y jitter, que es el corazón del ejercicio.\n\n| # | Qué muestra |\n|---|---|\n| 1 | El cliente cambia credenciales por un token |\n| 2 | La plataforma publica un evento en el bus |\n| 3 | Entregado al webhook en el primer intento |\n| 4 | Se publica un evento cuyo destino va a fallar |\n| 5 | El destino falla, se reintenta con backoff y se agota |\n| 6 | Reenvío manual: reabre el ciclo y responde 202 |\n| 7 | La misma notificación, ahora entregada |\n\nEl paso 5 espera unos segundos a que ocurran los reintentos. Es buen momento para mostrar la terminal del receptor, donde se ven llegar en vivo.\n\nNo depende de datos sembrados: cada ejecución crea sus propios eventos, así que se puede correr las veces que haga falta.",
       "item": [
         {
-          "name": "1 · Obtener token (client_credentials)",
+          "name": "1 · Obtener token",
           "event": [
             {
               "listen": "test",
@@ -67,15 +87,417 @@
                 "exec": [
                   "pm.test('Emite el token', () => pm.response.to.have.status(200));",
                   "const body = pm.response.json();",
-                  "pm.test('Es un Bearer con vigencia de una hora', () => {",
+                  "pm.test('Bearer con vigencia de una hora', () => {",
                   "    pm.expect(body.token_type).to.eql('Bearer');",
                   "    pm.expect(body.expires_in).to.eql(3600);",
                   "});",
-                  "pm.test('Los permisos salen de la credencial registrada', () => {",
-                  "    pm.expect(body.scope).to.include('notifications:read');",
-                  "    pm.expect(body.scope).to.include('notifications:replay');",
+                  "pm.collectionVariables.set('token', body.access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"grant_type\": \"client_credentials\",\n  \"client_id\": \"{{client_id}}\",\n  \"client_secret\": \"{{client_secret}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/oauth/token",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "oauth",
+                "token"
+              ]
+            },
+            "description": "El cliente prueba su identidad y recibe un token de vida corta. Es POST y no GET porque un GET dejaría el secreto en la URL, y las URLs quedan en los logs del balanceador y en el historial."
+          }
+        },
+        {
+          "name": "2 · La plataforma publica un evento",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Identificador unico por ejecucion, para poder correr la demo varias veces.",
+                  "const id = 'EVT-DEMO-' + Date.now();",
+                  "pm.collectionVariables.set('ok_event_id', id);",
+                  "pm.collectionVariables.set('evento_payload', JSON.stringify({",
+                  "    event_id: id,",
+                  "    client_id: pm.collectionVariables.get('client_id'),",
+                  "    event_type: 'credit_transfer',",
+                  "    content: 'Transferencia recibida por $1.500.000',",
+                  "    created_at: new Date().toISOString()",
+                  "}));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('El bus acepta el evento', () => pm.response.to.have.status(200));",
+                  "pm.test('Quedo enrutado a la cola del servicio', () =>",
+                  "    pm.expect(pm.response.json().routed).to.be.true);",
+                  "console.log('Evento publicado: ' + pm.collectionVariables.get('ok_event_id'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "guest"
+                },
+                {
+                  "key": "password",
+                  "value": "guest"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"properties\": { \"content_type\": \"application/json\", \"delivery_mode\": 2 },\n  \"routing_key\": \"notification.created\",\n  \"payload\": {{evento_payload}},\n  \"payload_encoding\": \"string\"\n}"
+            },
+            "url": {
+              "raw": "{{rabbit_url}}/api/exchanges/%2F/{{platform_exchange}}/publish",
+              "host": [
+                "{{rabbit_url}}"
+              ],
+              "path": [
+                "api",
+                "exchanges",
+                "%2F",
+                "{{platform_exchange}}",
+                "publish"
+              ]
+            },
+            "description": "Simula a la plataforma de Cobre publicando un evento de negocio en su bus. Se usa la API de gestión de RabbitMQ para no salir de Postman.\n\nEl servicio lo consume, confirma que el cliente tenga suscripción activa y lo entrega."
+          }
+        },
+        {
+          "name": "3 · Entregado en el primer intento",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// La entrega es asincrona: se le da un momento al worker.",
+                  "setTimeout(() => {}, 4000);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('La notificacion existe', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Quedo entregada', () => pm.expect(body.delivery_status).to.eql('completed'));",
+                  "pm.test('Basto un intento', () => pm.expect(body.attempts).to.eql(1));",
+                  "pm.test('Con respuesta 200 del webhook', () =>",
+                  "    pm.expect(body.delivery_attempts[0].http_status).to.eql(200));",
+                  "console.log('Entregada a ' + body.webhook_url);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notification_events/{{ok_event_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notification_events",
+                "{{ok_event_id}}"
+              ]
+            },
+            "description": "El camino feliz completo: el evento entró por el bus, se confirmó la suscripción, se entregó firmado al webhook y quedó registrado el intento con su duración."
+          }
+        },
+        {
+          "name": "4 · Un evento cuyo destino va a fallar",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// El identificador lleva FALLA: el receptor rechaza sus dos primeros intentos",
+                  "// y acepta el tercero. Es el unico caso de error del guion, y existe para",
+                  "// poder mostrar el backoff de verdad.",
+                  "const id = 'EVT-FALLA-' + Date.now();",
+                  "pm.collectionVariables.set('retry_event_id', id);",
+                  "pm.collectionVariables.set('evento_payload', JSON.stringify({",
+                  "    event_id: id,",
+                  "    client_id: pm.collectionVariables.get('client_id'),",
+                  "    event_type: 'credit_card_payment',",
+                  "    content: 'Pago con tarjeta por $150.00',",
+                  "    created_at: new Date().toISOString()",
+                  "}));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('El bus acepta el evento', () => pm.response.to.have.status(200));",
+                  "pm.test('Quedo enrutado', () => pm.expect(pm.response.json().routed).to.be.true);",
+                  "console.log('Evento que fallara: ' + pm.collectionVariables.get('retry_event_id'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "guest"
+                },
+                {
+                  "key": "password",
+                  "value": "guest"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"properties\": { \"content_type\": \"application/json\", \"delivery_mode\": 2 },\n  \"routing_key\": \"notification.created\",\n  \"payload\": {{evento_payload}},\n  \"payload_encoding\": \"string\"\n}"
+            },
+            "url": {
+              "raw": "{{rabbit_url}}/api/exchanges/%2F/{{platform_exchange}}/publish",
+              "host": [
+                "{{rabbit_url}}"
+              ],
+              "path": [
+                "api",
+                "exchanges",
+                "%2F",
+                "{{platform_exchange}}",
+                "publish"
+              ]
+            },
+            "description": "Mismo flujo que el paso 2, pero el receptor rechazará los dos primeros intentos con 503.\n\nBuen momento para mostrar la terminal del receptor: ahí se ven llegar los intentos en vivo, separados por el backoff."
+          }
+        },
+        {
+          "name": "5 · Reintentos con backoff hasta agotarse",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Espera a que se agote el ciclo: 3s + 6s de backoff, mas jitter.",
+                  "// Mientras corre, la terminal del receptor muestra los intentos llegando.",
+                  "setTimeout(() => {}, 16000);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('La notificacion existe', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "const intentos = body.delivery_attempts.sort((a, b) => a.attempt_number - b.attempt_number);",
+                  "",
+                  "pm.test('Se reintento varias veces', () => pm.expect(body.attempts).to.be.above(1));",
+                  "pm.test('Cada intento fallo con 503', () =>",
+                  "    intentos.forEach(a => pm.expect(a.http_status).to.eql(503)));",
+                  "pm.test('Quedo fallida y por tanto reenviable', () =>",
+                  "    pm.expect(body.delivery_status).to.eql('failed'));",
+                  "",
+                  "// El backoff, en la consola: cada espera es mayor que la anterior.",
+                  "console.log('--- bitacora de intentos ---');",
+                  "let previo = null;",
+                  "intentos.forEach(a => {",
+                  "    const t = new Date(a.attempted_at);",
+                  "    const espera = previo ? ' (+' + ((t - previo) / 1000).toFixed(1) + 's)' : '';",
+                  "    console.log(`intento ${a.attempt_number}: ${a.outcome} http=${a.http_status}${espera}`);",
+                  "    previo = t;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notification_events/{{retry_event_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notification_events",
+                "{{retry_event_id}}"
+              ]
+            },
+            "description": "El corazón del ejercicio. La bitácora muestra los tres intentos fallidos con esperas crecientes entre uno y otro, y la notificación terminando en `failed`.\n\nMira la consola de Postman: imprime el tiempo entre intentos. No son valores redondos porque llevan **jitter** — si el webhook de un cliente se cae, todas sus notificaciones fallan a la vez, y sin jitter reintentarían en el mismo instante y lo tumbarían de nuevo justo al recuperarse.\n\nAgotados los intentos, la notificación queda disponible para reenvío manual: es exactamente el caso de uso del siguiente paso."
+          }
+        },
+        {
+          "name": "6 · Reenviar la notificación fallida",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Acepta el reenvio con 202', () => pm.response.to.have.status(202));",
+                  "const body = pm.response.json();",
+                  "pm.test('Reabre el ciclo de entrega', () => {",
+                  "    pm.expect(body.delivery_status).to.eql('pending');",
+                  "    pm.expect(body.replay_count).to.eql(1);",
                   "});",
-                  "pm.test('La respuesta no se puede cachear', () =>",
+                  "pm.test('El contador de intentos vuelve a cero', () =>",
+                  "    pm.expect(body.attempts).to.eql(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notification_events/{{retry_event_id}}/replay",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notification_events",
+                "{{retry_event_id}}",
+                "replay"
+              ]
+            },
+            "description": "**202 y no 200**: el reenvío quedó encolado, no entregado. Si la API entregara en línea, la petición del cliente quedaría atada al tiempo de respuesta de su propio webhook y perdería la resiliencia del flujo normal.\n\nEl contador de intentos vuelve a cero para que el backoff empiece de nuevo — si no, el reenvío arrancaría directamente en el último escalón de espera. El `replay_count` sube a 1, y así los intentos de un ciclo y otro siguen distinguibles en la bitácora."
+          }
+        },
+        {
+          "name": "7 · Entregada tras el reenvío",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "setTimeout(() => {}, 4000);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('La notificacion existe', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Ahora si quedo entregada', () => pm.expect(body.delivery_status).to.eql('completed'));",
+                  "pm.test('Conserva el historial del ciclo anterior', () =>",
+                  "    pm.expect(body.delivery_attempts.length).to.be.above(3));",
+                  "console.log('Ciclos: ' + (body.replay_count + 1) + ' | intentos totales registrados: ' + body.delivery_attempts.length);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notification_events/{{retry_event_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notification_events",
+                "{{retry_event_id}}"
+              ]
+            },
+            "description": "Cierra la historia: la notificación que había fallado ahora está entregada.\n\nY la bitácora **conserva los intentos del ciclo anterior**: es una tabla append-only, nunca se actualiza ni se borra. Eso es lo que permite responder una queja con datos —qué se intentó, cuándo y qué respondió el destino— en vez de con suposiciones."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 · API self-service",
+      "description": "Lo que consume un cliente de Cobre. Es la referencia del contrato.\n\nLas tres operaciones que pide el enunciado, más la obtención del token, más las dos respuestas de error que un integrador necesita conocer para programar bien su lado.",
+      "item": [
+        {
+          "name": "POST /oauth/token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Emite el token', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Respuesta estandar de OAuth2', () => {",
+                  "    pm.expect(body).to.have.property('access_token');",
+                  "    pm.expect(body.token_type).to.eql('Bearer');",
+                  "    pm.expect(body).to.have.property('expires_in');",
+                  "    pm.expect(body).to.have.property('scope');",
+                  "});",
+                  "pm.test('No se puede cachear', () =>",
                   "    pm.expect(pm.response.headers.get('Cache-Control')).to.include('no-store'));",
                   "pm.collectionVariables.set('token', body.access_token);"
                 ]
@@ -104,28 +526,26 @@
                 "token"
               ]
             },
-            "description": "Es POST y no GET: un GET llevaría el secreto en la URL, y las URLs quedan en los logs del balanceador, en el historial y en la cabecera Referer."
+            "description": "Flujo `client_credentials` de OAuth2.\n\nEl token dura una hora y trae los permisos registrados para esa credencial — no los que pida el solicitante. Todas las demás llamadas van con `Authorization: Bearer <token>`.\n\n**Errores:** `401` si las credenciales no son válidas (mismo mensaje exista o no el cliente), `400` si falta un campo o el `grant_type` no es soportado, `429` si se supera el límite de intentos."
           }
         },
         {
-          "name": "2 · Filtrar por delivery_status",
+          "name": "GET /notification_events",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Filtra por estado de entrega', () => pm.response.to.have.status(200));",
+                  "pm.test('Devuelve el listado', () => pm.response.to.have.status(200));",
                   "const body = pm.response.json();",
-                  "pm.test('Todas las devueltas estan fallidas', () =>",
-                  "    body.data.forEach(e => pm.expect(e.delivery_status).to.eql('failed')));",
-                  "",
-                  "// Se captura una notificacion fallida para los pasos de detalle y reenvio.",
-                  "if (body.data.length > 0) {",
-                  "    pm.collectionVariables.set('failed_event_id', body.data[0].event_id);",
-                  "} else {",
-                  "    console.warn('Sin notificaciones fallidas: vuelve a sembrar la base para los pasos 10 a 14');",
-                  "}"
+                  "pm.test('Trae metadatos de paginacion', () => {",
+                  "    pm.expect(body).to.have.property('total_elements');",
+                  "    pm.expect(body).to.have.property('total_pages');",
+                  "    pm.expect(body).to.have.property('has_next');",
+                  "});",
+                  "pm.test('Solo notificaciones propias', () =>",
+                  "    body.data.forEach(e => pm.expect(e.client_id).to.eql(pm.collectionVariables.get('client_id'))));"
                 ]
               }
             }
@@ -139,7 +559,62 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/notification_events?delivery_status=failed",
+              "raw": "{{base_url}}/notification_events?page=0&size=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notification_events"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "20",
+                  "description": "Entre 1 y 100"
+                }
+              ]
+            },
+            "description": "Listado paginado de las notificaciones del cliente autenticado.\n\nEl `client_id` se toma del token: no hay forma de pedir las de otro cliente.\n\n**Paginación:** `page` desde 0, `size` entre 1 y 100. La respuesta trae `total_elements`, `total_pages` y `has_next`."
+          }
+        },
+        {
+          "name": "GET /notification_events (con filtros)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Aplica los filtros', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "const desde = new Date('2024-03-15T00:00:00Z');",
+                  "const hasta = new Date('2024-03-16T00:00:00Z');",
+                  "pm.test('Respeta el estado pedido', () =>",
+                  "    body.data.forEach(e => pm.expect(e.delivery_status).to.eql('failed')));",
+                  "pm.test('Respeta el rango de fechas', () =>",
+                  "    body.data.forEach(e => {",
+                  "        const creado = new Date(e.created_at);",
+                  "        pm.expect(creado >= desde && creado <= hasta).to.be.true;",
+                  "    }));",
+                  "if (body.data.length > 0) pm.collectionVariables.set('failed_event_id', body.data[0].event_id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notification_events?delivery_status=failed&created_from=2024-03-15T00:00:00Z&created_to=2024-03-16T00:00:00Z",
               "host": [
                 "{{base_url}}"
               ],
@@ -149,15 +624,26 @@
               "query": [
                 {
                   "key": "delivery_status",
-                  "value": "failed"
+                  "value": "failed",
+                  "description": "pending · retrying · completed · failed · discarded"
+                },
+                {
+                  "key": "created_from",
+                  "value": "2024-03-15T00:00:00Z",
+                  "description": "ISO-8601 en UTC"
+                },
+                {
+                  "key": "created_to",
+                  "value": "2024-03-16T00:00:00Z",
+                  "description": "ISO-8601 en UTC"
                 }
               ]
             },
-            "description": "Captura el identificador de una notificación fallida y lo guarda para los pasos siguientes."
+            "description": "Los dos filtros que pide el enunciado: por fecha de creación del evento y por estado de entrega.\n\nSe pueden combinar o usar por separado.\n\n**Errores:** `400` si el estado no es uno de los soportados, si `created_from` es posterior a `created_to`, o si `size` está fuera de rango."
           }
         },
         {
-          "name": "3 · Detalle con bitácora de intentos",
+          "name": "GET /notification_events/{id}",
           "event": [
             {
               "listen": "test",
@@ -166,13 +652,14 @@
                 "exec": [
                   "pm.test('Devuelve el detalle', () => pm.response.to.have.status(200));",
                   "const body = pm.response.json();",
-                  "pm.test('Incluye la bitacora completa de intentos', () => {",
+                  "pm.test('Incluye la bitacora de intentos', () => {",
                   "    pm.expect(body).to.have.property('delivery_attempts');",
-                  "    pm.expect(body.delivery_attempts).to.be.an('array').that.is.not.empty;",
+                  "    pm.expect(body.delivery_attempts).to.be.an('array');",
                   "});",
                   "pm.test('Cada intento dice que paso y cuanto tardo', () =>",
                   "    body.delivery_attempts.forEach(a => {",
                   "        pm.expect(a).to.have.property('outcome');",
+                  "        pm.expect(a).to.have.property('http_status');",
                   "        pm.expect(a).to.have.property('duration_ms');",
                   "    }));"
                 ]
@@ -197,20 +684,58 @@
                 "{{failed_event_id}}"
               ]
             },
-            "description": "La bitácora es lo que permite responder una queja con datos y no con suposiciones."
+            "description": "Detalle de una notificación con **la bitácora completa de intentos**: cuándo se intentó, qué respondió el destino, cuánto tardó y por qué falló.\n\nEs lo que permite responder una queja con datos y no con suposiciones.\n\n**Errores:** `404` si no existe **o si pertenece a otro cliente**."
           }
         },
         {
-          "name": "4 · Notificación de otro cliente → 404",
+          "name": "POST /notification_events/{id}/replay",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Un recurso ajeno responde 404, no 403', () => pm.response.to.have.status(404));",
-                  "// 403 confirmaria que el recurso existe y permitiria enumerar identificadores",
-                  "// ajenos. Hacia afuera, 'no existe' y 'no es tuyo' son indistinguibles."
+                  "pm.test('Acepta el reenvio con 202', () => pm.response.to.have.status(202));",
+                  "const body = pm.response.json();",
+                  "pm.test('Reabre el ciclo', () => {",
+                  "    pm.expect(body.delivery_status).to.eql('pending');",
+                  "    pm.expect(body.replay_count).to.be.at.least(1);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notification_events/{{failed_event_id}}/replay",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notification_events",
+                "{{failed_event_id}}",
+                "replay"
+              ]
+            },
+            "description": "Reenvía una notificación cuya entrega falló definitivamente.\n\nResponde **202**: el reenvío quedó encolado, no entregado. El resultado se consulta después con el endpoint de detalle.\n\n**Errores:** `409` si la notificación no está en `failed` —reenviar una entregada la duplicaría, y reenviar una en curso competiría con el reintento ya programado—, `403` si el token no tiene el permiso `notifications:replay`, `404` si es de otro cliente."
+          }
+        },
+        {
+          "name": "Notificación de otro cliente → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 404 y no 403', () => pm.response.to.have.status(404));"
                 ]
               }
             }
@@ -233,97 +758,18 @@
                 "{{foreign_event_id}}"
               ]
             },
-            "description": "EVT005 pertenece a CLIENT003. Con un token de CLIENT002 es indistinguible de un recurso inexistente."
+            "description": "`EVT005` pertenece a otro cliente.\n\nResponde **404 y no 403** a propósito: un 403 confirmaría que el recurso existe y convertiría la API en un oráculo para enumerar identificadores ajenos. Hacia afuera, \"no existe\" y \"no es tuyo\" son indistinguibles."
           }
         },
         {
-          "name": "5 · Reenviar una entrega fallida → 202",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Acepta el reenvio con 202 y no 200', () => pm.response.to.have.status(202));",
-                  "const body = pm.response.json();",
-                  "pm.test('Reabre el ciclo de entrega', () => {",
-                  "    pm.expect(body.delivery_status).to.eql('pending');",
-                  "    pm.expect(body.replay_count).to.be.at.least(1);",
-                  "});",
-                  "// 202 porque el reenvio quedo encolado, no entregado. Entregar en linea ataria",
-                  "// la peticion del cliente al tiempo de respuesta de su propio webhook."
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/notification_events/{{failed_event_id}}/replay",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "notification_events",
-                "{{failed_event_id}}",
-                "replay"
-              ]
-            }
-          }
-        },
-        {
-          "name": "6 · Reenviar de nuevo → 409",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Rechaza reenviar algo que ya no esta fallido', () => pm.response.to.have.status(409));",
-                  "// Solo se reenvia lo que fallo definitivamente: reenviar algo entregado",
-                  "// duplicaria la notificacion, y reenviar algo en curso competiria con el",
-                  "// reintento ya programado."
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/notification_events/{{failed_event_id}}/replay",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "notification_events",
-                "{{failed_event_id}}",
-                "replay"
-              ]
-            }
-          }
-        },
-        {
-          "name": "7 · Reenviar sin permiso → 403",
+          "name": "Reenviar sin permiso → 403",
           "event": [
             {
               "listen": "prerequest",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// Consigue un token de CLIENT003 (registrado solo con permiso de lectura)",
-                  "// sin gastar una peticion visible del guion.",
+                  "// Token de un cliente registrado solo con permiso de lectura.",
                   "pm.sendRequest({",
                   "    url: pm.collectionVariables.get('base_url') + '/oauth/token',",
                   "    method: 'POST',",
@@ -342,8 +788,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Un token de solo lectura no puede disparar reenvios', () => pm.response.to.have.status(403));",
-                  "// Autenticado si, autorizado no. Es la diferencia entre 401 y 403."
+                  "pm.test('Autenticado si, autorizado no', () => pm.response.to.have.status(403));"
                 ]
               }
             }
@@ -367,553 +812,7 @@
                 "replay"
               ]
             },
-            "description": "EVT005 sí pertenece a CLIENT003, así que el 403 es por falta de permiso y no por pertenencia."
-          }
-        }
-      ]
-    },
-    {
-      "name": "2 · Cobertura completa (14 peticiones)",
-      "description": "El resto de casos: salud, paginación, filtros por fecha, validaciones de entrada, credenciales inválidas y protección de las métricas.\n\nNo hace falta mostrarlas en la presentación; están para quien revise el repositorio a fondo.",
-      "item": [
-        {
-          "name": "01 · Salud del servicio",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Responde 200 sin necesidad de token', () => pm.response.to.have.status(200));",
-                  "pm.test('El servicio esta arriba', () => pm.expect(pm.response.json().status).to.eql('UP'));",
-                  "// health e info son los unicos endpoints publicos de actuator: los necesitan",
-                  "// las sondas de readiness y liveness del orquestador."
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{base_url}}/actuator/health",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "actuator",
-                "health"
-              ]
-            },
-            "description": "Público a propósito: las sondas del orquestador no pueden autenticarse."
-          }
-        },
-        {
-          "name": "03 · Sin token → 401",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Rechaza la peticion sin credenciales', () => pm.response.to.have.status(401));",
-                  "// La ultima regla de la cadena de seguridad es denyAll(): un endpoint nuevo",
-                  "// nace protegido en vez de nacer abierto."
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{base_url}}/notification_events",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "notification_events"
-              ]
-            }
-          }
-        },
-        {
-          "name": "04 · Listar notificaciones",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Devuelve el listado', () => pm.response.to.have.status(200));",
-                  "const body = pm.response.json();",
-                  "pm.test('Trae metadatos de paginacion', () => {",
-                  "    pm.expect(body).to.have.property('total_elements');",
-                  "    pm.expect(body).to.have.property('total_pages');",
-                  "    pm.expect(body).to.have.property('has_next');",
-                  "});",
-                  "pm.test('Solo devuelve notificaciones del cliente del token', () =>",
-                  "    body.data.forEach(e => pm.expect(e.client_id).to.eql(pm.collectionVariables.get('client_id'))));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/notification_events",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "notification_events"
-              ]
-            },
-            "description": "El client_id sale del token, nunca de la petición. No existe ningún parámetro que permita pedir datos de otro cliente."
-          }
-        },
-        {
-          "name": "05 · Paginación",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Respeta el tamano de pagina', () => {",
-                  "    pm.response.to.have.status(200);",
-                  "    const body = pm.response.json();",
-                  "    pm.expect(body.size).to.eql(2);",
-                  "    pm.expect(body.data.length).to.be.at.most(2);",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/notification_events?page=0&size=2",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "notification_events"
-              ],
-              "query": [
-                {
-                  "key": "page",
-                  "value": "0"
-                },
-                {
-                  "key": "size",
-                  "value": "2"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "name": "07 · Filtrar por fecha de creación",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Acepta el rango de fechas', () => pm.response.to.have.status(200));",
-                  "const desde = new Date('2024-03-15T00:00:00Z');",
-                  "const hasta = new Date('2024-03-16T00:00:00Z');",
-                  "pm.test('Todas caen dentro del rango pedido', () =>",
-                  "    pm.response.json().data.forEach(e => {",
-                  "        const creado = new Date(e.created_at);",
-                  "        pm.expect(creado >= desde && creado <= hasta).to.be.true;",
-                  "    }));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/notification_events?created_from=2024-03-15T00:00:00Z&created_to=2024-03-16T00:00:00Z",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "notification_events"
-              ],
-              "query": [
-                {
-                  "key": "created_from",
-                  "value": "2024-03-15T00:00:00Z"
-                },
-                {
-                  "key": "created_to",
-                  "value": "2024-03-16T00:00:00Z"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "name": "08 · Estado inválido → 400",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Rechaza un estado desconocido', () => pm.response.to.have.status(400));",
-                  "pm.test('Dice cuales son los valores soportados', () =>",
-                  "    pm.expect(pm.response.json().detail).to.include('completed'));",
-                  "// El enum se valida antes de llegar a la base: nunca entra a la consulta."
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/notification_events?delivery_status=entregado",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "notification_events"
-              ],
-              "query": [
-                {
-                  "key": "delivery_status",
-                  "value": "entregado"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "name": "09 · Página desmedida → 400",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Acota el tamano de pagina', () => pm.response.to.have.status(400));",
-                  "// Sin tope, un filtro se convierte en una descarga completa de la tabla."
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/notification_events?size=5000",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "notification_events"
-              ],
-              "query": [
-                {
-                  "key": "size",
-                  "value": "5000"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "name": "14 · Detalle tras el reenvío",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Devuelve el detalle', () => pm.response.to.have.status(200));",
-                  "pm.test('Registra el ciclo de reenvio', () =>",
-                  "    pm.expect(pm.response.json().replay_count).to.be.at.least(1));",
-                  "// La bitacora es append-only: los intentos del ciclo anterior siguen ahi."
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/notification_events/{{failed_event_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "notification_events",
-                "{{failed_event_id}}"
-              ]
-            }
-          }
-        },
-        {
-          "name": "15 · Token de solo lectura (CLIENT003)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Emite el token', () => pm.response.to.have.status(200));",
-                  "const body = pm.response.json();",
-                  "pm.test('Solo trae permiso de lectura', () => {",
-                  "    pm.expect(body.scope).to.include('notifications:read');",
-                  "    pm.expect(body.scope).to.not.include('notifications:replay');",
-                  "});",
-                  "pm.collectionVariables.set('readonly_token', body.access_token);"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"grant_type\": \"client_credentials\",\n  \"client_id\": \"{{readonly_client_id}}\",\n  \"client_secret\": \"{{readonly_client_secret}}\"\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/oauth/token",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "oauth",
-                "token"
-              ]
-            },
-            "description": "CLIENT003 está registrado sin permiso de reenvío, para demostrar que consultar y reenviar son autorizaciones distintas."
-          }
-        },
-        {
-          "name": "17 · Secreto incorrecto → 401",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Rechaza credenciales invalidas', () => pm.response.to.have.status(401));",
-                  "pm.collectionVariables.set('error_secreto_malo', pm.response.json().detail);"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"grant_type\": \"client_credentials\",\n  \"client_id\": \"{{client_id}}\",\n  \"client_secret\": \"secreto-equivocado\"\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/oauth/token",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "oauth",
-                "token"
-              ]
-            }
-          }
-        },
-        {
-          "name": "18 · Cliente inexistente → mismo error",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Rechaza igual que un secreto incorrecto', () => pm.response.to.have.status(401));",
-                  "pm.test('El mensaje es indistinguible: no revela que clientes existen', () =>",
-                  "    pm.expect(pm.response.json().detail).to.eql(pm.collectionVariables.get('error_secreto_malo')));",
-                  "// Distinguir ambos casos convertiria el endpoint en un directorio de clientes",
-                  "// validos, que es el primer paso de una fuerza bruta dirigida."
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"grant_type\": \"client_credentials\",\n  \"client_id\": \"CLIENTE-QUE-NO-EXISTE\",\n  \"client_secret\": \"lo-que-sea\"\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/oauth/token",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "oauth",
-                "token"
-              ]
-            }
-          }
-        },
-        {
-          "name": "19 · grant_type no soportado → 400",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Solo acepta client_credentials', () => pm.response.to.have.status(400));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"grant_type\": \"password\",\n  \"client_id\": \"{{client_id}}\",\n  \"client_secret\": \"{{client_secret}}\"\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/oauth/token",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "oauth",
-                "token"
-              ]
-            }
-          }
-        },
-        {
-          "name": "20 · Métricas sin token → 401",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Las metricas no son publicas', () => pm.response.to.have.status(401));",
-                  "// Un /actuator/prometheus abierto entrega el mapa operativo del sistema."
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{base_url}}/actuator/prometheus",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "actuator",
-                "prometheus"
-              ]
-            }
-          }
-        },
-        {
-          "name": "21 · Métricas con token de monitoreo",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Con el scope de monitoreo si responde', () => pm.response.to.have.status(200));",
-                  "pm.test('Expone las metricas del servicio', () => {",
-                  "    pm.expect(pm.response.text()).to.include('cobre_notification');",
-                  "    pm.expect(pm.response.text()).to.include('cobre_auth_token');",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/actuator/prometheus",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "actuator",
-                "prometheus"
-              ]
-            }
+            "description": "El token es de un cliente registrado **solo con permiso de lectura**, y la notificación sí le pertenece: el 403 es por falta de permiso, no por pertenencia.\n\nConsultar y reenviar son autorizaciones distintas: un panel de consulta no debería poder disparar reenvíos."
           }
         }
       ]

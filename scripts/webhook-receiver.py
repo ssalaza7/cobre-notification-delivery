@@ -4,10 +4,15 @@
 Imprime lo que llega, verifica la firma HMAC y permite forzar codigos de respuesta
 para ver el comportamiento de los reintentos sin depender de un servicio externo.
 
+Por defecto responde 200, salvo que el identificador del evento contenga "FALLA": esos
+fallan los primeros intentos y despues aceptan. Asi una misma instancia sirve para
+demostrar la entrega exitosa y el ciclo de reintentos sin reiniciar nada a mitad de una
+presentacion.
+
 Uso:
-    python3 scripts/webhook-receiver.py                 # responde 200 a todo
-    python3 scripts/webhook-receiver.py --status 500    # falla siempre: dispara el backoff
-    python3 scripts/webhook-receiver.py --fail-first 2  # falla los 2 primeros intentos y luego acepta
+    python3 scripts/webhook-receiver.py                 # 200, salvo eventos con FALLA
+    python3 scripts/webhook-receiver.py --status 500    # falla siempre: agota los reintentos
+    python3 scripts/webhook-receiver.py --fail-first 2  # falla los 2 primeros de CUALQUIER evento
 
 Las URLs sembradas apuntan a http://localhost:9090/webhooks/<CLIENT_ID>.
 """
@@ -26,7 +31,7 @@ SECRETS = {
 }
 
 attempts_by_event = defaultdict(int)
-options = argparse.Namespace(status=200, fail_first=0)
+options = argparse.Namespace(status=200, fail_first=0, fail_pattern="FALLA", fail_times=3)
 
 
 def verify_signature(client_id: str, timestamp: str, signature: str, body: bytes) -> str:
@@ -50,9 +55,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
         client_id = self.path.rsplit("/", 1)[-1]
 
         attempts_by_event[event_id] += 1
-        status = options.status
-        if options.fail_first and attempts_by_event[event_id] <= options.fail_first:
-            status = 503
+        status = decide_status(event_id, attempts_by_event[event_id])
 
         verdict = verify_signature(
             client_id,
@@ -78,16 +81,37 @@ class WebhookHandler(BaseHTTPRequestHandler):
         """Silencia el log por defecto: ya se imprime lo relevante."""
 
 
+def decide_status(event_id: str, intento: int) -> int:
+    """Decide que responder segun el evento y el numero de intento.
+
+    Un evento cuyo identificador contiene el patron de fallo devuelve 503 en sus
+    primeros intentos y 200 despues. Eso permite mostrar en la misma sesion una entrega
+    limpia y un ciclo de reintentos, sin tocar el receptor entre una y otra.
+    """
+    if options.fail_first and intento <= options.fail_first:
+        return 503
+    if options.fail_pattern and options.fail_pattern.upper() in event_id.upper():
+        return 503 if intento <= options.fail_times else 200
+    return options.status
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Receptor de webhooks de prueba")
     parser.add_argument("--port", type=int, default=9090)
     parser.add_argument("--status", type=int, default=200, help="Codigo a devolver siempre")
     parser.add_argument("--fail-first", type=int, default=0,
-                        help="Responde 503 los N primeros intentos de cada evento y luego 200")
+                        help="Responde 503 los N primeros intentos de CUALQUIER evento")
+    parser.add_argument("--fail-pattern", default="FALLA",
+                        help="Los eventos cuyo id contenga este texto fallan sus primeros intentos")
+    parser.add_argument("--fail-times", type=int, default=3,
+                        help="Cuantos intentos fallan los eventos que coinciden con el patron. Por defecto 3, que es lo que agota el ciclo en el perfil local: asi el evento queda fallido y el reenvio manual -que abre un ciclo nuevo- si se entrega.")
     parser.parse_args(namespace=options)
 
     print(f"Receptor de webhooks escuchando en http://localhost:{options.port}/webhooks/<CLIENT_ID>",
           flush=True)
+    if options.fail_pattern:
+        print(f"  Los eventos con '{options.fail_pattern}' en el id fallaran sus primeros "
+              f"{options.fail_times} intentos; el resto se aceptan.", flush=True)
     HTTPServer(("0.0.0.0", options.port), WebhookHandler).serve_forever()
 
 

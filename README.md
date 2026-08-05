@@ -184,26 +184,39 @@ En [postman/](postman/), organizada en dos carpetas.
 
 ### 1 · Demostración — 7 peticiones
 
-El guion de la presentación. Una petición por cada capacidad que pide el enunciado, más
-las dos respuestas de seguridad que más dicen. Menos de dos minutos.
+El guion de la presentación. Recorre el ciclo completo de una notificación, y **todo son
+casos de éxito salvo uno**, que existe justamente para disparar los reintentos.
 
-| # | Qué demuestra |
+| # | Qué muestra |
 |---|---|
 | 1 | El cliente cambia credenciales por un token |
-| 2 | Consulta con filtro por estado de entrega |
-| 3 | Detalle con la bitácora completa de intentos |
-| 4 | Una notificación ajena responde `404`, no `403` |
-| 5 | Reenvío aceptado con `202` |
-| 6 | Repetirlo da `409`: solo se reenvía lo que falló definitivamente |
-| 7 | Un token sin permiso de reenvío da `403` |
+| 2 | La plataforma publica un evento en el bus |
+| 3 | Entregado al webhook en el primer intento |
+| 4 | Se publica un evento cuyo destino va a fallar |
+| 5 | Falla, se reintenta con backoff y se agota → `failed` |
+| 6 | Reenvío manual: reabre el ciclo → `202` |
+| 7 | La misma notificación, ahora entregada |
 
-Se corre sola: clic derecho en la carpeta → *Run folder*.
+Ensayo real:
 
-### 2 · Cobertura completa — 14 peticiones
+```
+3 · estado=completed intentos=1 http=200
+5 · estado=failed intentos=3
+     intento 1: retryable_failure http=503
+     intento 2: retryable_failure http=503 (+3.5s)
+     intento 3: retryable_failure http=503 (+6.8s)
+6 · reenviar -> 202
+7 · estado=completed ciclos=2 intentos_registrados=4
+```
 
-El resto: salud, paginación, filtros por fecha, validaciones de entrada, credenciales
-inválidas y protección de las métricas. No hace falta mostrarlas; están para quien revise
-el repositorio a fondo.
+Los `+3.5s` y `+6.8s` son los escalones de 3s y 6s **con jitter**. Y los 4 intentos
+registrados al final prueban que la bitácora es append-only: el reenvío no borra la
+historia del ciclo anterior.
+
+**No depende de datos sembrados.** Cada ejecución crea sus propios eventos, así que se
+puede correr las veces que haga falta — en el ensayo y en vivo.
+
+### 2 · API self-service — 7 peticiones
 
 ---
 

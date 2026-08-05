@@ -10,8 +10,10 @@ cobre:
     require-https: false
     block-internal-addresses: false
   retry:
-    max-attempts: 4
-    delays: 3s, 8s, 20s, 60s
+    # Tres intentos en ~10 segundos: alcanza a agotarse mientras se explica, y sigue
+    # siendo backoff exponencial con jitter de verdad.
+    max-attempts: 3
+    delays: 3s, 6s, 10s
 
 logging:
   level:
