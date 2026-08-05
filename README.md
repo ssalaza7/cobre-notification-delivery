@@ -180,33 +180,40 @@ terminan en los logs del balanceador, en el historial y en la cabecera `Referer`
 
 ## Colección de Postman
 
-En [postman/](postman/) hay una colección con **21 peticiones en orden de ejecución**,
-cada una con sus aserciones. Se importa y se corre entera con el Collection Runner.
+En [postman/](postman/), organizada en dos carpetas.
 
-El orden cuenta una historia: obtener token → consultar → filtrar → ver detalle →
-comprobar el aislamiento entre clientes → reenviar → y los casos de seguridad.
+### 1 · Demostración — 7 peticiones
+
+El guion de la presentación. Una petición por cada capacidad que pide el enunciado, más
+las dos respuestas de seguridad que más dicen. Menos de dos minutos.
 
 | # | Qué demuestra |
 |---|---|
-| 01–02 | Salud pública y emisión de token |
-| 03 | Sin token → `401` |
-| 04–07 | Listado, paginación y los filtros por estado y por fecha |
-| 08–09 | Estado inválido y página desmedida → `400` |
-| 10 | Detalle con la bitácora completa de intentos |
-| 11 | Notificación de otro cliente → `404`, no `403` |
-| 12–14 | Reenvío `202`, repetición `409`, y el ciclo registrado |
-| 15–16 | Token de solo lectura → reenviar da `403` |
-| 17–18 | Secreto incorrecto y cliente inexistente → **el mismo error** |
-| 19 | `grant_type` no soportado → `400` |
-| 20–21 | Métricas protegidas por scope |
+| 1 | El cliente cambia credenciales por un token |
+| 2 | Consulta con filtro por estado de entrega |
+| 3 | Detalle con la bitácora completa de intentos |
+| 4 | Una notificación ajena responde `404`, no `403` |
+| 5 | Reenvío aceptado con `202` |
+| 6 | Repetirlo da `409`: solo se reenvía lo que falló definitivamente |
+| 7 | Un token sin permiso de reenvío da `403` |
 
-Las peticiones encadenan variables: el token se guarda solo, y el identificador de una
-notificación fallida se captura del listado filtrado para usarlo en el detalle y el
-reenvío. Si cambiaste de puerto, ajusta la variable `base_url`.
+Se corre sola: clic derecho en la carpeta → *Run folder*.
 
-> Los pasos 12 y 13 necesitan que `CLIENT002` tenga una notificación en `failed`. En una
-> base recién sembrada es `EVT003`. Si ya la reenviaste y quedó entregada, vuelve a
-> sembrar con `docker compose down -v && docker compose up -d`.
+### 2 · Cobertura completa — 14 peticiones
+
+El resto: salud, paginación, filtros por fecha, validaciones de entrada, credenciales
+inválidas y protección de las métricas. No hace falta mostrarlas; están para quien revise
+el repositorio a fondo.
+
+---
+
+Las peticiones encadenan variables: el token se guarda al obtenerlo y el identificador de
+una notificación fallida se captura del listado filtrado. Si cambiaste de puerto, ajusta
+`base_url`.
+
+> Los pasos de reenvío necesitan que `CLIENT002` tenga una notificación en `failed`. En
+> una base recién sembrada es `EVT003`. Si ya la reenviaste, vuelve a sembrar con
+> `docker compose down -v && docker compose up -d`.
 
 ---
 
