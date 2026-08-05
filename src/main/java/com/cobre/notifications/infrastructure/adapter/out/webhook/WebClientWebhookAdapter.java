@@ -89,9 +89,8 @@ public class WebClientWebhookAdapter implements WebhookClientPort {
         String payload = serialize(request);
         Instant signedAt = clock.instant();
 
-        // event-timestamp y event-signature son las cabeceras que Cobre ya documenta
-        // para sus webhooks. Las X-Cobre-* son adicionales y sirven para que el
-        // receptor pueda deduplicar y distinguir un reintento sin abrir el cuerpo.
+        // El identificador y el numero de intento viajan tambien como cabeceras para
+        // que el receptor pueda deduplicar y distinguir un reintento sin abrir el cuerpo.
         return webClient.post()
                 .uri(uri)
                 .contentType(MediaType.APPLICATION_JSON)

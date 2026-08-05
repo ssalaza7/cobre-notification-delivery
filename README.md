@@ -308,7 +308,6 @@ rechazadas, redirecciones— que un mock daría por supuesto.
 |---|---|
 | [Diseño del sistema](docs/01-diseno-del-sistema.md) | **Task 1** — C4, secuencias, despliegue en AWS, escalabilidad, resiliencia, limitaciones |
 | [Seguridad OWASP](docs/02-seguridad-owasp.md) | **Task 3** — 5 vulnerabilidades con mitigación implementada |
-| [Referencia API de Cobre](docs/03-referencia-api-cobre.md) | Cómo lo hace Cobre hoy, qué se adoptó y dónde esta propuesta va más lejos |
 
 ---
 

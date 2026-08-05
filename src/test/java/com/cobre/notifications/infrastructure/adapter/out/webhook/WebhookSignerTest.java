@@ -28,18 +28,18 @@ class WebhookSignerTest {
     }
 
     @Test
-    @DisplayName("usa las cabeceras que Cobre ya documenta para sus webhooks")
-    void usa_las_cabeceras_documentadas() {
-        assertThat(WebhookSigner.TIMESTAMP_HEADER).isEqualTo("event-timestamp");
-        assertThat(WebhookSigner.SIGNATURE_HEADER).isEqualTo("event-signature");
+    @DisplayName("las cabeceras de firma tienen nombres estables: son contrato publico")
+    void las_cabeceras_son_contrato() {
+        assertThat(WebhookSigner.TIMESTAMP_HEADER).isEqualTo("X-Cobre-Timestamp");
+        assertThat(WebhookSigner.SIGNATURE_HEADER).isEqualTo("X-Cobre-Signature");
     }
 
     @Test
-    @DisplayName("el receptor puede recalcular la firma sobre timestamp + '.' + cuerpo")
+    @DisplayName("el receptor recalcula la firma sobre timestamp + '.' + cuerpo crudo")
     void el_receptor_puede_verificar() throws Exception {
         String signature = signer.sign(PAYLOAD, SECRET, SIGNED_AT);
 
-        // Lo que haria el cliente en su extremo, siguiendo el procedimiento publicado.
+        // Lo que haria el cliente en su extremo.
         Mac mac = Mac.getInstance("HmacSHA256");
         mac.init(new SecretKeySpec(SECRET.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
         String expected = HexFormat.of().formatHex(mac.doFinal(

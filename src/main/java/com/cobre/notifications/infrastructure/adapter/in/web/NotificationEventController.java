@@ -10,6 +10,7 @@ import com.cobre.notifications.infrastructure.adapter.in.web.dto.NotificationEve
 import com.cobre.notifications.infrastructure.adapter.in.web.dto.NotificationEventResponse;
 import com.cobre.notifications.infrastructure.adapter.in.web.dto.PagedResponse;
 import com.cobre.notifications.infrastructure.adapter.in.web.dto.ReplayResponse;
+import com.cobre.notifications.infrastructure.config.ConditionalOnRole;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -35,6 +36,7 @@ import java.util.stream.Collectors;
  */
 @RestController
 @RequestMapping("/notification_events")
+@ConditionalOnRole(ConditionalOnRole.API)
 public class NotificationEventController {
 
     private final QueryNotificationEventsUseCase queryUseCase;

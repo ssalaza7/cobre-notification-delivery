@@ -3,6 +3,7 @@ package com.cobre.notifications.infrastructure.adapter.in.messaging;
 import com.cobre.notifications.application.port.in.DeliverNotificationEventUseCase;
 import com.cobre.notifications.domain.exception.NotificationEventNotFoundException;
 import com.cobre.notifications.infrastructure.adapter.out.messaging.DeliveryCommandMessage;
+import com.cobre.notifications.infrastructure.config.ConditionalOnRole;
 import com.cobre.notifications.infrastructure.config.MessagingProperties;
 import com.cobre.notifications.infrastructure.observability.LogFields;
 import org.slf4j.Logger;
@@ -21,6 +22,7 @@ import tools.jackson.databind.ObjectMapper;
  * unico camino de entrega y no dos implementaciones que se puedan desincronizar.
  */
 @Component
+@ConditionalOnRole(ConditionalOnRole.WORKER)
 public class DeliveryCommandListener extends AbstractAmqpListener {
 
     private static final Logger log = LoggerFactory.getLogger(DeliveryCommandListener.class);

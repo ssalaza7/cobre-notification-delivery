@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.server.ServerWebInputException;
 
 import java.net.URI;
@@ -57,6 +58,25 @@ public class ApiExceptionHandler {
                 "Revise el formato de los parametros de la peticion; las fechas deben ir en ISO-8601 "
                         + "(por ejemplo 2024-03-15T00:00:00Z)",
                 "invalid-parameters");
+    }
+
+    /**
+     * Errores que el propio framework ya clasifico con un estado HTTP: una ruta que no
+     * existe, un metodo no permitido, un tipo de contenido no soportado.
+     *
+     * <p>Sin este manejador caerian en el generico de abajo y saldrian como 500. Una
+     * ruta inexistente no es un fallo del servidor, y responder 500 ademas oculta el
+     * problema real a quien esta integrando.
+     */
+    @ExceptionHandler(ResponseStatusException.class)
+    public ProblemDetail handleResponseStatus(ResponseStatusException e) {
+        HttpStatus status = HttpStatus.resolve(e.getStatusCode().value());
+        if (status == null) {
+            status = HttpStatus.INTERNAL_SERVER_ERROR;
+        }
+        return problem(status, status.getReasonPhrase(),
+                e.getReason() != null ? e.getReason() : "La peticion no pudo atenderse",
+                "request-rejected");
     }
 
     @ExceptionHandler(Exception.class)

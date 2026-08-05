@@ -1,6 +1,7 @@
 package com.cobre.notifications.infrastructure.adapter.in.messaging;
 
 import com.cobre.notifications.application.port.in.IngestNotificationEventUseCase;
+import com.cobre.notifications.infrastructure.config.ConditionalOnRole;
 import com.cobre.notifications.infrastructure.config.MessagingProperties;
 import com.cobre.notifications.infrastructure.observability.LogFields;
 import org.slf4j.Logger;
@@ -20,6 +21,7 @@ import tools.jackson.databind.ObjectMapper;
  * cambia esta clase y nada mas.
  */
 @Component
+@ConditionalOnRole(ConditionalOnRole.WORKER)
 public class PlatformEventListener extends AbstractAmqpListener {
 
     private static final Logger log = LoggerFactory.getLogger(PlatformEventListener.class);

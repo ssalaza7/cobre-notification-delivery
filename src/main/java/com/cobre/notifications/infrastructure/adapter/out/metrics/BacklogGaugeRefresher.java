@@ -2,6 +2,7 @@ package com.cobre.notifications.infrastructure.adapter.out.metrics;
 
 import com.cobre.notifications.application.port.out.NotificationEventRepositoryPort;
 import com.cobre.notifications.domain.model.DeliveryStatus;
+import com.cobre.notifications.infrastructure.config.ConditionalOnRole;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -20,6 +21,7 @@ import java.util.Map;
  * cambio da una senal correcta para alertar.
  */
 @Component
+@ConditionalOnRole(ConditionalOnRole.WORKER)
 public class BacklogGaugeRefresher {
 
     private static final Logger log = LoggerFactory.getLogger(BacklogGaugeRefresher.class);

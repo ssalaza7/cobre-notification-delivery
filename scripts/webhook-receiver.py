@@ -30,7 +30,7 @@ options = argparse.Namespace(status=200, fail_first=0)
 
 
 def verify_signature(client_id: str, timestamp: str, signature: str, body: bytes) -> str:
-    """Replica el procedimiento de verificacion que Cobre documenta para sus webhooks:
+    """Verificacion que haria el cliente en su extremo:
     HMAC-SHA256 sobre `timestamp + "." + cuerpo crudo`, en UTF-8."""
     secret = SECRETS.get(client_id)
     if not secret or not signature or not timestamp:
@@ -56,8 +56,8 @@ class WebhookHandler(BaseHTTPRequestHandler):
 
         verdict = verify_signature(
             client_id,
-            self.headers.get("event-timestamp"),
-            self.headers.get("event-signature"),
+            self.headers.get("X-Cobre-Timestamp"),
+            self.headers.get("X-Cobre-Signature"),
             body)
         try:
             payload = json.dumps(json.loads(body), ensure_ascii=False)

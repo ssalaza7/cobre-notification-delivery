@@ -404,14 +404,12 @@ La sección siguiente traduce todo esto a una nube concreta.
 
 ## 9. Una materialización: despliegue en AWS
 
-> **Supuestos de esta sección, y su origen.** Que la infraestructura es AWS y que la
-> plataforma publica en Confluent Cloud proviene de descripciones de vacantes y perfiles
-> públicos de la compañía, más las IPs de egreso que la propia documentación de Cobre
-> pide poner en lista blanca (`50.17.12.196`, `54.173.144.191`, ambas en rangos EC2 de
-> `us-east-1`). Es una señal fuerte, no documentación oficial de arquitectura.
+> **Supuestos de esta sección.** Se elige AWS como nube objetivo y un bus de eventos
+> tipo Kafka a la entrada. Son decisiones de esta propuesta, no requisitos del enunciado.
 >
-> **Nada de las secciones 1 a 8 depende de que esto sea cierto.** Lo que sigue es una
-> instanciación defendible, no el diseño.
+> **Nada de las secciones 1 a 8 depende de ellas.** Lo que sigue es una instanciación
+> concreta y defendible; sobre otro proveedor cambian los nombres de los servicios y la
+> tabla de la sección 8, no el diseño.
 
 ```mermaid
 flowchart TB

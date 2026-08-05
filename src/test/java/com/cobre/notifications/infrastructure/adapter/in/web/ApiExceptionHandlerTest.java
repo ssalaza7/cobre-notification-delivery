@@ -9,6 +9,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.server.ServerWebInputException;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -62,6 +63,26 @@ class ApiExceptionHandlerTest {
 
         assertThat(problem.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST.value());
         assertThat(problem.getDetail()).contains("ISO-8601");
+    }
+
+    @Test
+    @DisplayName("una ruta inexistente responde 404 y no 500: no es un fallo del servidor")
+    void una_ruta_inexistente_no_es_error_del_servidor() {
+        ProblemDetail problem = handler.handleResponseStatus(
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "No hay endpoint para GET /desconocido"));
+
+        assertThat(problem.getStatus()).isEqualTo(HttpStatus.NOT_FOUND.value());
+        assertThat(problem.getDetail()).contains("desconocido");
+    }
+
+    @Test
+    @DisplayName("un metodo no permitido conserva su estado en vez de degradarse a 500")
+    void conserva_el_estado_del_framework() {
+        ProblemDetail problem = handler.handleResponseStatus(
+                new ResponseStatusException(HttpStatus.METHOD_NOT_ALLOWED));
+
+        assertThat(problem.getStatus()).isEqualTo(HttpStatus.METHOD_NOT_ALLOWED.value());
+        assertThat(problem.getDetail()).isNotBlank();
     }
 
     @Test

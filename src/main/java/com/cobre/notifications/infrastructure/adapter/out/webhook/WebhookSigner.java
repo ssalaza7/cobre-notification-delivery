@@ -17,16 +17,17 @@ import java.util.HexFormat;
  * una peticion fabricada por cualquiera que conozca la URL del webhook. Con ella,
  * el cliente recalcula el HMAC con su secreto compartido y descarta lo que no cuadre.
  *
- * <p><b>El esquema replica el que Cobre ya documenta para sus webhooks</b>
- * (Notifications &amp; Subscriptions): se firma la concatenacion
- * {@code timestamp + "." + cuerpo crudo}, con HMAC-SHA256 sobre UTF-8, y el resultado
- * viaja en la cabecera {@code event-signature} acompanado de {@code event-timestamp}.
- * Alinearse con el contrato existente importa: un cliente que ya integro webhooks de
- * Cobre no deberia tener que escribir un verificador distinto para estos.
+ * <p>Se firma la concatenacion {@code timestamp + "." + cuerpo crudo} con HMAC-SHA256
+ * sobre UTF-8. Es el esquema estandar de la industria para firmar webhooks, y se elige
+ * por dos propiedades concretas.
  *
- * <p>El instante entra <i>dentro</i> del contenido firmado y no solo en una cabecera
- * suelta: eso permite al receptor rechazar la reproduccion de una captura antigua sin
- * que un atacante pueda alterar la marca de tiempo.
+ * <p>Primero, se firma el <b>cuerpo crudo</b> y no un objeto ya deserializado: dos
+ * bibliotecas JSON distintas pueden reordenar claves o normalizar espacios, y entonces
+ * el receptor calcularia un hash distinto sobre el mismo contenido.
+ *
+ * <p>Segundo, el instante entra <i>dentro</i> del contenido firmado y no solo en una
+ * cabecera suelta: eso permite al receptor rechazar la reproduccion de una captura
+ * antigua sin que un atacante pueda alterar la marca de tiempo.
  */
 @Component
 public class WebhookSigner {
@@ -34,15 +35,15 @@ public class WebhookSigner {
     private static final String ALGORITHM = "HmacSHA256";
 
     /** Cabecera con el instante de firma, en segundos desde epoch (UTC). */
-    public static final String TIMESTAMP_HEADER = "event-timestamp";
+    public static final String TIMESTAMP_HEADER = "X-Cobre-Timestamp";
 
     /** Cabecera con el HMAC-SHA256 en hexadecimal. */
-    public static final String SIGNATURE_HEADER = "event-signature";
+    public static final String SIGNATURE_HEADER = "X-Cobre-Signature";
 
     /**
      * Calcula el HMAC de {@code timestamp + "." + payload}.
      *
-     * @return el hash en hexadecimal, tal como debe viajar en {@code event-signature}
+     * @return el hash en hexadecimal, tal como debe viajar en la cabecera de firma
      */
     public String sign(String payload, String secret, Instant timestamp) {
         return hmacHex(timestamp.getEpochSecond() + "." + payload, secret);
