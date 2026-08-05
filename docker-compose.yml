@@ -1,0 +1,85 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cobre-notifications-postgres
+    # Los puertos del host son configurables para poder convivir con otros
+    # contenedores ya levantados: PG_PORT=5433 docker compose up -d
+    ports:
+      - "${PG_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: notifications
+      POSTGRES_USER: cobre
+      POSTGRES_PASSWORD: cobre
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cobre -d notifications"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: cobre-notifications-rabbitmq
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_UI_PORT:-15672}:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # --- Stack de observabilidad local -------------------------------------------
+  # No arranca por defecto. Se levanta aparte porque Elasticsearch pide bastante
+  # memoria y no hace falta para desarrollar ni para correr las pruebas:
+  #   docker compose --profile observability up -d
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+    container_name: cobre-notifications-elasticsearch
+    profiles: ["observability"]
+    environment:
+      discovery.type: single-node
+      # Sin seguridad: es un entorno local desechable. En AWS esto es OpenSearch
+      # Service con TLS, autenticacion por IAM y acceso solo desde la VPC.
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "${ES_PORT:-9200}:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.15.3
+    container_name: cobre-notifications-kibana
+    profiles: ["observability"]
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    ports:
+      - "${KIBANA_PORT:-5601}:5601"
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.15.3
+    container_name: cobre-notifications-filebeat
+    profiles: ["observability"]
+    user: root
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    command: ["filebeat", "-e", "--strict.perms=false"]
+    volumes:
+      - ./observability/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      # Los logs que escribe la aplicacion corriendo en el host.
+      - ./logs:/app-logs:ro
+
+volumes:
+  postgres-data:
