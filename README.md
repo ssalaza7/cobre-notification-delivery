@@ -292,6 +292,56 @@ mensaje va a la DLQ y el endpoint de reenvío queda disponible.
 
 ---
 
+## Guion para la demostración en vivo
+
+El enunciado entrega la URL destino el mismo día de la presentación. Este es el
+recorrido, ensayado de punta a punta.
+
+### Antes de entrar (una sola vez)
+
+```bash
+docker compose up -d
+SPRING_PROFILES_ACTIVE=demo ./gradlew bootRun
+```
+
+El perfil `demo` existe para esto: **exige HTTPS y bloquea destinos internos**, como en
+producción, pero con escalones de reintento de 3s · 8s · 20s · 60s, que se pueden
+mostrar completos mientras se explican. Ni `local` ni el perfil por defecto sirven:
+`local` desactiva la exigencia de HTTPS, y por defecto el último escalón es de 30
+minutos.
+
+### Cuando te den la URL
+
+```bash
+./scripts/set-webhook-url.sh https://el-destino-que-me-dieron/webhook
+```
+
+**Sin reiniciar.** El adaptador consulta la base en cada entrega, así que el cambio
+aplica desde la siguiente notificación. Reiniciar serían cincuenta segundos de silencio
+delante del panel.
+
+### Disparar y mostrar
+
+```bash
+./scripts/publish-event.sh EVT-DEMO-1 CLIENT001 credit_transfer "Transferencia por 1.500.000"
+```
+
+Y consultar el resultado con la API:
+
+```
+estado   : completed
+destino  : https://el-destino-que-me-dieron/webhook
+  intento 1: delivered http=200 1237ms
+```
+
+### Si su URL no responde
+
+No es un problema, es la otra mitad de la demostración: apunta a tu propio receptor con
+`--fail-first 2` y muestra el ciclo de reintentos con backoff y jitter. El mecanismo es
+el mismo; lo único que cambia es el destino.
+
+---
+
 ## Entregar a una URL externa (modo estricto)
 
 El destino de todas las suscripciones se puede sustituir con una variable de entorno,

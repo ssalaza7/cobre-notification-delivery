@@ -1,0 +1,32 @@
+# Perfil para la presentacion en vivo.
+#
+# Combina lo que ningun otro perfil junta: la validacion estricta que exige el
+# enunciado -entrega por HTTPS a la URL que se entrega el dia de la presentacion- con
+# escalones de reintento lo bastante cortos como para verlos completos delante de una
+# audiencia.
+#
+# El perfil `local` acorta los reintentos pero desactiva la exigencia de HTTPS, asi que
+# no sirve para demostrar el requisito; el perfil por defecto exige HTTPS pero su ultimo
+# escalon es de 30 minutos.
+cobre:
+  webhook:
+    # Igual que en produccion: solo HTTPS y sin destinos en la red interna.
+    require-https: true
+    block-internal-addresses: true
+    # Un destino ajeno puede ser lento; se da algo mas de margen que por defecto.
+    connect-timeout: 5s
+    response-timeout: 10s
+
+  retry:
+    # Cuatro intentos en poco mas de un minuto y medio: alcanza a mostrarse entero
+    # mientras se explica, y sigue siendo backoff exponencial con jitter de verdad.
+    max-attempts: 4
+    delays: 3s, 8s, 20s, 60s
+    jitter-ratio: 0.2
+
+logging:
+  level:
+    com.cobre.notifications: INFO
+  structured:
+    format:
+      console: ""
