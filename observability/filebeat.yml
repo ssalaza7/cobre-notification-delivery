@@ -1,0 +1,41 @@
+# Filebeat lee el archivo JSON que escribe la aplicacion y lo envia a Elasticsearch.
+#
+# La aplicacion no conoce este archivo ni sabe que existe Elasticsearch: solo escribe
+# JSON en formato ECS. Cambiar el destino (OpenSearch en AWS, Datadog Logs, S3) es
+# cambiar esta configuracion, no la aplicacion.
+
+filebeat.inputs:
+  - type: filestream
+    id: notification-delivery-service
+    enabled: true
+    paths:
+      - /app-logs/*.json
+    parsers:
+      # El log ya viene en ECS, asi que se promueve al nivel raiz del documento en vez
+      # de anidarlo bajo un campo: los campos quedan indexados y consultables tal cual.
+      - ndjson:
+          target: ""
+          overwrite_keys: true
+          add_error_key: true
+          expand_keys: true
+
+processors:
+  # Metadatos utiles que no tiene sentido que produzca la aplicacion.
+  - add_host_metadata: ~
+  - drop_fields:
+      fields: ["agent", "ecs.version", "input", "log.offset"]
+      ignore_missing: true
+
+output.elasticsearch:
+  hosts: ["http://elasticsearch:9200"]
+  index: "cobre-notifications-%{+yyyy.MM.dd}"
+
+setup.template.name: "cobre-notifications"
+setup.template.pattern: "cobre-notifications-*"
+setup.ilm.enabled: false
+
+# Kibana necesita saber donde esta para poder crear el patron de indice.
+setup.kibana:
+  host: "http://kibana:5601"
+
+logging.level: warning
