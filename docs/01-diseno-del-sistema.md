@@ -3,12 +3,19 @@
 Entrega de notificaciones de eventos por webhook, más una API self-service para que
 el cliente consulte y reenvíe sus notificaciones.
 
-> **Nota sobre el contexto de Cobre.** El diseño asume que la plataforma ya publica sus
-> eventos en Confluent Cloud (Kafka) y que la infraestructura es AWS. Ese dato proviene
-> de descripciones de vacantes y perfiles públicos de la compañía, no de documentación
-> oficial de arquitectura: es una señal fuerte, no una certeza. Si el bus resultara ser
-> otro, cambia un adaptador de entrada y nada más — que es justamente lo que la
-> arquitectura hexagonal permite afirmar sin cruzar los dedos.
+> **Cómo leer este documento.** El enunciado pide diseñar la solución garantizando
+> escalabilidad y resiliencia; no fija nube, broker ni base de datos. Por eso el diseño
+> está expresado en dos niveles separados a propósito:
+>
+> - **Secciones 1 a 8 — el diseño.** Estructura, garantías, máquina de estados y
+>   propiedades que se le exigen a la infraestructura. Es independiente de productos y
+>   es donde vive la respuesta a escalabilidad y resiliencia.
+> - **Sección 9 — una materialización.** Un despliegue concreto en AWS, con los supuestos
+>   que lo sustentan declarados y su origen citado.
+>
+> La sección 8 es la bisagra: dice qué necesita el diseño de su sustrato y cómo se cumple
+> con distintas tecnologías. Si el broker o la nube resultan ser otros, cambia esa tabla
+> y algún adaptador; no cambia el diseño.
 
 ---
 
@@ -58,11 +65,9 @@ ocurrió y termina cuando la entrega quedó cerrada y registrada.
 flowchart TB
     platform["Microservicios<br/>de la plataforma"]
 
-    subgraph bus["Bus de eventos"]
-        kafka[("Kafka / Confluent Cloud<br/>topic de eventos")]
-    end
+    bus[("Bus de eventos<br/>de la plataforma")]
 
-    subgraph service["Notification Delivery Service"]
+    subgraph service["Notification Delivery Service · un microservicio"]
         api["<b>API self-service</b><br/>Spring WebFlux<br/>GET · GET/id · POST replay"]
         worker["<b>Worker de entrega</b><br/>consume, entrega, reintenta"]
     end
@@ -73,11 +78,11 @@ flowchart TB
         dlq[("DLQ")]
     end
 
-    db[("PostgreSQL / Aurora<br/>notification_event<br/>delivery_attempt<br/>subscription")]
+    db[("Base de datos relacional<br/>notification_event<br/>delivery_attempt<br/>subscription")]
     hook["Webhook del cliente"]
-    obs["OpenSearch · Datadog"]
+    obs["Logs y métricas"]
 
-    platform --> kafka --> worker
+    platform --> bus --> worker
     worker <--> dq
     worker -- "fallo transitorio" --> rq
     rq -- "al expirar el TTL" --> dq
@@ -92,12 +97,30 @@ flowchart TB
     style worker fill:#1f6feb,color:#fff
 ```
 
-**La API y el worker son el mismo artefacto desplegado dos veces.** Mismo contenedor,
-distintos adaptadores activos. Esto importa porque sus perfiles de carga no tienen
-nada que ver: la API responde a personas y paneles (tráfico diurno, ráfagas pequeñas),
-mientras que el worker sigue el ritmo de la plataforma y puede tener que drenar una
-cola de millones de eventos a las 3 de la mañana. Escalarlos juntos significa pagar
-worker de más o quedarse corto de API.
+### Un microservicio, dos roles de ejecución
+
+**La API y el worker son el mismo artefacto desplegado dos veces**: mismo contenedor,
+distintos adaptadores activos. Conviene separar dos preguntas que suelen mezclarse.
+
+**¿Despliegues separados? Sí.** Sus perfiles de carga no tienen nada que ver: la API
+responde a personas y paneles (tráfico diurno, ráfagas pequeñas), mientras que el
+worker sigue el ritmo de la plataforma y puede tener que drenar millones de eventos a
+las 3 de la mañana. Escalarlos juntos significa pagar worker de más o quedarse corto de
+API. Y si la API se satura, el cliente no puede consultar; si se satura el worker, **las
+notificaciones no se entregan**. Son fallos de gravedad distinta y merecen aislamiento.
+Además el worker no necesita exponerse a internet en absoluto.
+
+**¿Microservicios separados? No.** Ambos operan sobre las mismas tablas y comparten la
+misma máquina de estados. Dos servicios contra una misma base de datos es un monolito
+distribuido: paga el costo de la red sin obtener el aislamiento. Y el límite de un
+microservicio se traza por capacidad de negocio, no por capa técnica — "API" y "worker"
+son capas. El *bounded context* aquí es uno: la entrega de notificaciones.
+
+*Cuándo cambiaría:* si la entrega llegara a tener otro equipo dueño y otro SLA. Pero
+entonces el corte correcto no sería API contra worker, sino que el servicio de entrega
+fuera dueño de los datos y la API self-service pasara a ser un modelo de lectura
+(CQRS), con el reenvío convertido en un comando publicado. Es una decisión que se toma
+cuando duele, no antes.
 
 ---
 
@@ -123,9 +146,9 @@ flowchart LR
     end
 
     subgraph out["Adaptadores de salida"]
-        r2dbc["R2DBC · PostgreSQL"]
+        r2dbc["Persistencia"]
         web["WebClient + HMAC + anti-SSRF"]
-        mq["RabbitMQ / SQS"]
+        mq["Cola de trabajo"]
         met["Micrometer"]
     end
 
@@ -139,7 +162,7 @@ flowchart LR
 
 Las dependencias apuntan **siempre hacia adentro**. `domain` y `application` no
 importan una sola clase de Spring; el cableado vive completo en
-`infrastructure/config/AppConfig`. Consecuencia práctica y verificable: las 140
+`infrastructure/config/AppConfig`. Consecuencia práctica y verificable: las 141
 pruebas del dominio y los casos de uso corren sin levantar contexto de Spring, sin
 base de datos y sin broker, en menos de dos segundos.
 
@@ -157,9 +180,9 @@ haciendo que el caso inseguro no se pueda expresar.
 
 ```mermaid
 sequenceDiagram
-    participant K as Kafka
+    participant K as Bus de eventos
     participant W as Worker
-    participant DB as PostgreSQL
+    participant DB as Base de datos
     participant S as Suscripciones
     participant H as Webhook cliente
     participant Q as Colas de retardo
@@ -235,7 +258,7 @@ deducir la cola destino a partir del valor ya jitterado.
 sequenceDiagram
     participant C as Cliente
     participant A as API
-    participant DB as PostgreSQL
+    participant DB as Base de datos
     participant Q as Cola de entrega
 
     C->>A: POST /notification_events/{id}/replay
@@ -322,7 +345,73 @@ sano.
 
 ---
 
-## 8. Despliegue en AWS
+## 8. Qué le exige este diseño a la infraestructura
+
+Antes de elegir productos conviene fijar **qué propiedades** hacen falta. Esta es la
+lista completa; cualquier sustrato que las cumpla sirve.
+
+| # | Propiedad exigida | Por qué el diseño la necesita |
+|---|---|---|
+| 1 | **Entrega al menos una vez, con confirmación explícita tras procesar** | Si el proceso muere a mitad de una entrega, el mensaje debe reentregarse. Confirmar al recibir perdería notificaciones |
+| 2 | **Reintento con retardo programado fuera del proceso** | Un `sleep` o un `delayElement` en memoria se pierde con el reinicio o el reescalado |
+| 3 | **Destino terminal inspeccionable para lo no entregable (DLQ)** | Un mensaje envenenado reencolado es un bucle infinito que consume toda la capacidad |
+| 4 | **Consumidores en competencia, sin orden garantizado** | Es lo que impide que el webhook lento de un cliente bloquee a los demás |
+| 5 | **Durabilidad de los mensajes ante reinicio del broker** | Un evento de pago no puede vivir solo en memoria |
+| 6 | **Almacén transaccional con escritura condicional** | La máquina de estados usa bloqueo optimista sobre `(attempts, replay_count)` |
+| 7 | **Unicidad por clave natural** | `event_id` como clave primaria es lo que hace idempotente la ingesta |
+
+### Una no-exigencia deliberada: orden global
+
+El diseño **no pide** orden en la entrega, y eso es una decisión, no un descuido.
+Exigirlo obligaría a serializar por partición o por cola, y entonces un solo cliente
+con el webhook caído bloquearía a todos los que compartan esa partición. La ausencia
+de orden es justamente lo que permite el aislamiento entre clientes.
+
+El orden que sí importa —los intentos de una misma notificación— está garantizado por
+otra vía: solo hay un mensaje en vuelo por evento a la vez, y el bloqueo optimista
+rechaza cualquier escritura basada en una versión obsoleta.
+
+### Cómo se cumplen con distintas tecnologías
+
+| Propiedad | RabbitMQ | SQS | Kafka | Amazon MQ |
+|---|---|---|---|---|
+| 1 · At-least-once con ack | `consumeManualAck` | Visibility timeout | Commit de offset | Igual que RabbitMQ |
+| 2 · Retardo | Cola por escalón con TTL + DLX | `DelaySeconds` nativo | **No lo tiene**: topic por escalón y código propio | Igual que RabbitMQ |
+| 3 · DLQ | DLX + cola muerta | Redrive policy | Topic muerto manual | Igual que RabbitMQ |
+| 4 · Sin orden, en competencia | Sí | Sí (cola estándar) | **No**: orden por partición → bloqueo de cabeza | Sí |
+| 5 · Durabilidad | Mensajes persistentes | Nativa | Nativa | Nativa |
+
+**La conclusión sale de la tabla, no de una preferencia.** Kafka falla en las
+propiedades 2 y 4, que son exactamente las que sostienen los reintentos y el
+aislamiento entre clientes. Es un excelente bus de eventos de negocio y una mala cola
+de trabajo. Por eso, si el bus de la plataforma es Kafka, lo correcto es **consumir de
+él y traspasar a una cola de trabajo** para la entrega — no forzar a Kafka a hacer de
+las dos cosas.
+
+Ese razonamiento vale igual si el bus resulta ser RabbitMQ, Pub/Sub o SNS: cambia qué
+adaptador de entrada se escribe, no la estructura.
+
+### Qué ya está implementado y qué no
+
+| Propiedad | En este repo |
+|---|---|
+| 1, 2, 3, 4, 5 | Implementadas sobre RabbitMQ, verificadas en ejecución |
+| 6, 7 | Implementadas sobre PostgreSQL, verificadas en ejecución |
+
+La sección siguiente traduce todo esto a una nube concreta.
+
+---
+
+## 9. Una materialización: despliegue en AWS
+
+> **Supuestos de esta sección, y su origen.** Que la infraestructura es AWS y que la
+> plataforma publica en Confluent Cloud proviene de descripciones de vacantes y perfiles
+> públicos de la compañía, más las IPs de egreso que la propia documentación de Cobre
+> pide poner en lista blanca (`50.17.12.196`, `54.173.144.191`, ambas en rangos EC2 de
+> `us-east-1`). Es una señal fuerte, no documentación oficial de arquitectura.
+>
+> **Nada de las secciones 1 a 8 depende de que esto sea cierto.** Lo que sigue es una
+> instanciación defendible, no el diseño.
 
 ```mermaid
 flowchart TB
@@ -423,15 +512,18 @@ integraciones.
 
 ---
 
-## 9. Escalabilidad
+## 10. Escalabilidad
 
-| Dimensión | Mecanismo | Señal de autoescalado |
-|---|---|---|
-| API self-service | ECS Fargate, sin estado | RPS por tarea / CPU |
-| Worker de entrega | Consumidores en competencia sobre SQS | `ApproximateNumberOfMessagesVisible` |
-| Lecturas de la API | Réplica de lectura de Aurora | Separada del camino de escritura |
-| Escrituras | Aurora escritor; particionar por `client_id` si llega el caso | — |
-| Ingesta desde Kafka | Consumidores hasta el número de particiones | Lag del grupo de consumo |
+Los mecanismos son independientes del producto; la última columna es solo cómo se
+instrumentan en la materialización de la sección 9.
+
+| Dimensión | Mecanismo | Señal de autoescalado | En AWS |
+|---|---|---|---|
+| API self-service | Réplicas sin estado tras un balanceador | RPS por réplica / CPU | ECS Fargate + ALB |
+| Worker de entrega | Consumidores en competencia sobre la cola | Profundidad de la cola | `ApproximateNumberOfMessagesVisible` |
+| Lecturas de la API | Réplica de lectura, separada del camino de escritura | Latencia de consulta | Aurora read replica |
+| Escrituras | Nodo escritor; particionar por `client_id` si llega el caso | — | Aurora writer |
+| Ingesta desde el bus | Consumidores hasta el paralelismo que permita el bus | Retraso del consumidor | Lag del consumer group |
 
 **El cuello de botella real no es nuestro: es el webhook del cliente.** Por eso la
 métrica que gobierna el autoescalado del worker es la profundidad de cola y no la CPU
@@ -445,7 +537,7 @@ precisamente para poder enrutar sin cambiar el productor.
 
 ---
 
-## 10. Resiliencia
+## 11. Resiliencia
 
 | Riesgo | Mitigación | Dónde está |
 |---|---|---|
@@ -471,7 +563,7 @@ descubra en producción.
 
 ---
 
-## 11. Limitaciones conocidas
+## 12. Limitaciones conocidas
 
 Cosas que faltan, dichas antes de que las pregunte el panel:
 
@@ -493,7 +585,7 @@ Cosas que faltan, dichas antes de que las pregunte el panel:
 
 ---
 
-## 12. Camino a producción
+## 13. Camino a producción
 
 1. **CI**: `./gradlew build` en cada PR — pruebas más gate de cobertura del 90%.
 2. **CD**: imagen a ECR, despliegue azul/verde en ECS con `readinessProbe` sobre
