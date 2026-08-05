@@ -25,4 +25,15 @@ public interface MetricsPort {
     void retryScheduled(String eventType, int attemptNumber);
 
     void replayRequested(String eventType);
+
+    /** Token emitido correctamente. */
+    void accessTokenIssued();
+
+    /**
+     * Intento de autenticacion rechazado.
+     *
+     * <p>Es la senal que permite alertar por fuerza bruta: un salto en esta metrica
+     * sin un salto equivalente en los tokens emitidos es alguien probando secretos.
+     */
+    void accessTokenDenied();
 }

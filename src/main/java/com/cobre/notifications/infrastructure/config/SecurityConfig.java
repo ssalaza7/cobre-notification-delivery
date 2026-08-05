@@ -59,6 +59,9 @@ public class SecurityConfig {
                 .httpBasic(ServerHttpSecurity.HttpBasicSpec::disable)
                 .formLogin(ServerHttpSecurity.FormLoginSpec::disable)
                 .authorizeExchange(exchanges -> exchanges
+                        // Unico endpoint publico: es donde el cliente prueba su
+                        // identidad, asi que no puede exigir identidad previa.
+                        .pathMatchers(HttpMethod.POST, "/oauth/token").permitAll()
                         .pathMatchers("/actuator/health/**", "/actuator/info").permitAll()
                         .pathMatchers("/actuator/**").hasAuthority(SCOPE_MONITOR)
                         .pathMatchers(HttpMethod.POST, "/notification_events/*/replay").hasAuthority(SCOPE_REPLAY)

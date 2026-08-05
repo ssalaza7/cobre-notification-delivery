@@ -123,13 +123,72 @@ curl -s http://localhost:8080/actuator/health
 # {"groups":["liveness","readiness"],"status":"UP"}
 ```
 
-### 4. Generar un token
+### 4. Obtener un token
 
-La API exige JWT. Para la prueba se firman con HS256 y una clave local:
+La API exige un token. Se obtiene con el flujo `client_credentials` de OAuth2, contra
+la propia API:
 
 ```bash
-TOKEN=$(python3 scripts/generate-token.py CLIENT002)
+TOKEN=$(curl -s -X POST http://localhost:8080/oauth/token \
+  -H 'Content-Type: application/json' \
+  -d '{"grant_type":"client_credentials","client_id":"CLIENT002","client_secret":"demo-secret-client002"}' \
+  | python3 -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
 ```
+
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiJ9...",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "scope": "notifications:read notifications:replay notifications:monitor"
+}
+```
+
+Credenciales sembradas para la demostración:
+
+| client_id | client_secret | scopes |
+|---|---|---|
+| `CLIENT001` | `demo-secret-client001` | read · replay · monitor |
+| `CLIENT002` | `demo-secret-client002` | read · replay · monitor |
+| `CLIENT003` | `demo-secret-client003` | **solo read** |
+
+`CLIENT003` no tiene permiso de reenvío a propósito: sirve para demostrar que consultar
+y reenviar son autorizaciones distintas.
+
+Es `POST` y no `GET` deliberadamente: un `GET` llevaría el secreto en la URL, y las URLs
+terminan en los logs del balanceador, en el historial y en la cabecera `Referer`.
+
+---
+
+## Colección de Postman
+
+En [postman/](postman/) hay una colección con **21 peticiones en orden de ejecución**,
+cada una con sus aserciones. Se importa y se corre entera con el Collection Runner.
+
+El orden cuenta una historia: obtener token → consultar → filtrar → ver detalle →
+comprobar el aislamiento entre clientes → reenviar → y los casos de seguridad.
+
+| # | Qué demuestra |
+|---|---|
+| 01–02 | Salud pública y emisión de token |
+| 03 | Sin token → `401` |
+| 04–07 | Listado, paginación y los filtros por estado y por fecha |
+| 08–09 | Estado inválido y página desmedida → `400` |
+| 10 | Detalle con la bitácora completa de intentos |
+| 11 | Notificación de otro cliente → `404`, no `403` |
+| 12–14 | Reenvío `202`, repetición `409`, y el ciclo registrado |
+| 15–16 | Token de solo lectura → reenviar da `403` |
+| 17–18 | Secreto incorrecto y cliente inexistente → **el mismo error** |
+| 19 | `grant_type` no soportado → `400` |
+| 20–21 | Métricas protegidas por scope |
+
+Las peticiones encadenan variables: el token se guarda solo, y el identificador de una
+notificación fallida se captura del listado filtrado para usarlo en el detalle y el
+reenvío. Si cambiaste de puerto, ajusta la variable `base_url`.
+
+> Los pasos 12 y 13 necesitan que `CLIENT002` tenga una notificación en `failed`. En una
+> base recién sembrada es `EVT003`. Si ya la reenviaste y quedó entregada, vuelve a
+> sembrar con `docker compose down -v && docker compose up -d`.
 
 ---
 

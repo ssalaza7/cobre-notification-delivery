@@ -66,9 +66,16 @@ cobre:
       # se inyecta por entorno o secret manager, y el paso natural es validar por JWKS
       # contra un proveedor OIDC en vez de usar clave compartida.
       secret: ${JWT_SECRET:cobre-local-development-secret-key-please-change-me}
+      # Vigencia corta: un JWT no se puede revocar sin una lista de revocacion, asi que
+      # la vida breve es el unico control real sobre un token filtrado.
+      token-ttl: 1h
+      issuer: cobre-notification-delivery-service
     rate-limit:
       enabled: true
       requests-per-minute: 120
+      # Mucho mas estricto: en /oauth/token lo que se contiene es la prueba de secretos
+      # a ciegas, y la cuota va por direccion de origen porque aun no hay nadie autenticado.
+      token-requests-per-minute: 10
 
 management:
   endpoints:

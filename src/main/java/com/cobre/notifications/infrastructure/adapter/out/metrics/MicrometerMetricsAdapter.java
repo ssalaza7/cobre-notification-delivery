@@ -43,6 +43,7 @@ public class MicrometerMetricsAdapter implements MetricsPort {
     private static final String REPLAYS = "cobre.notification.replay.requested";
     private static final String INGESTED = "cobre.notification.ingested";
     private static final String BACKLOG = "cobre.notification.backlog";
+    private static final String TOKENS = "cobre.auth.token";
 
     private final MeterRegistry registry;
     private final Map<DeliveryStatus, AtomicLong> backlog = new EnumMap<>(DeliveryStatus.class);
@@ -85,6 +86,16 @@ public class MicrometerMetricsAdapter implements MetricsPort {
     @Override
     public void replayRequested(String eventType) {
         registry.counter(REPLAYS, "event_type", eventType).increment();
+    }
+
+    @Override
+    public void accessTokenIssued() {
+        registry.counter(TOKENS, "result", "issued").increment();
+    }
+
+    @Override
+    public void accessTokenDenied() {
+        registry.counter(TOKENS, "result", "denied").increment();
     }
 
     /** Lo invoca el refrescador periodico de backlog. */

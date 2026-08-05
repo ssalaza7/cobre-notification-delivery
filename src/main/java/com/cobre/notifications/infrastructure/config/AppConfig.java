@@ -3,17 +3,22 @@ package com.cobre.notifications.infrastructure.config;
 import com.cobre.notifications.application.port.in.DeliverNotificationEventUseCase;
 import com.cobre.notifications.application.port.in.GetNotificationEventUseCase;
 import com.cobre.notifications.application.port.in.IngestNotificationEventUseCase;
+import com.cobre.notifications.application.port.in.IssueAccessTokenUseCase;
 import com.cobre.notifications.application.port.in.QueryNotificationEventsUseCase;
 import com.cobre.notifications.application.port.in.ReplayNotificationEventUseCase;
+import com.cobre.notifications.application.port.out.AccessTokenIssuerPort;
+import com.cobre.notifications.application.port.out.ApiCredentialRepositoryPort;
 import com.cobre.notifications.application.port.out.DeliveryAttemptRepositoryPort;
 import com.cobre.notifications.application.port.out.DeliveryQueuePort;
 import com.cobre.notifications.application.port.out.MetricsPort;
 import com.cobre.notifications.application.port.out.NotificationEventRepositoryPort;
+import com.cobre.notifications.application.port.out.SecretHasherPort;
 import com.cobre.notifications.application.port.out.SubscriptionRepositoryPort;
 import com.cobre.notifications.application.port.out.WebhookClientPort;
 import com.cobre.notifications.application.service.DeliverNotificationEventService;
 import com.cobre.notifications.application.service.GetNotificationEventService;
 import com.cobre.notifications.application.service.IngestNotificationEventService;
+import com.cobre.notifications.application.service.IssueAccessTokenService;
 import com.cobre.notifications.application.service.QueryNotificationEventsService;
 import com.cobre.notifications.application.service.ReplayNotificationEventService;
 import com.cobre.notifications.domain.model.RetryPolicy;
@@ -110,6 +115,15 @@ public class AppConfig {
         return new DeliverNotificationEventService(
                 events, attempts, subscriptions, webhookClient, deliveryQueue,
                 metrics, retryPolicy, clock, random);
+    }
+
+    @Bean
+    IssueAccessTokenUseCase issueAccessTokenUseCase(
+            ApiCredentialRepositoryPort credentials,
+            SecretHasherPort hasher,
+            AccessTokenIssuerPort issuer,
+            MetricsPort metrics) {
+        return new IssueAccessTokenService(credentials, hasher, issuer, metrics);
     }
 
     @Bean

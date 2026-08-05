@@ -124,14 +124,27 @@ mapa operativo del sistema. Verificado: devuelve 401 sin token.
 ### Lo que falta para producción
 
 **Este servicio valida tokens; no los emite.** Emitir identidad es otro contexto: un
-servicio de notificaciones no debería administrar credenciales. Para la prueba los
-tokens se firman con un script local (`scripts/generate-token.py`), porque desplegar un
-emisor completo excede el alcance del ejercicio.
+servicio de notificaciones no debería administrar credenciales de terceros.
 
-En el despliegue propuesto el emisor es **Amazon Cognito**, y la validación pasa de
-clave compartida a **JWKS**: el servicio descarga las claves públicas del emisor, que
-puede rotarlas sin redesplegar, y deja de conocer ningún secreto de firma. Es un cambio
-de configuración, no de código.
+Para que la solución se sostenga sola, la API emite sus propios tokens con el flujo
+`client_credentials` de OAuth2 en `POST /oauth/token`. Las defensas de ese endpoint, que
+es el único público y por tanto el más expuesto:
+
+| Riesgo | Mitigación |
+|---|---|
+| Volcado de la base | El secreto se guarda **solo como hash bcrypt**; en claro no existe en ninguna parte |
+| Enumeración de clientes | Un **único mensaje de error** para cliente inexistente, secreto incorrecto y credencial desactivada |
+| Enumeración por temporización | Si el cliente no existe se ejecuta igual una verificación **en vacío**, para que ambos casos tarden lo mismo |
+| Fuerza bruta | Límite estricto **por dirección de origen**, aparte del límite general por cliente |
+| Escalada de privilegios | Los scopes salen de la **credencial registrada**, nunca de lo que pida el solicitante |
+| Secreto en logs y proxies | Es **`POST`**, no `GET`: el secreto no viaja en la URL. La respuesta va con `Cache-Control: no-store` |
+| Token filtrado | Vigencia de **1 hora**. Un JWT no se puede revocar sin lista de revocación; la vida corta es el único control real |
+
+En una plataforma real esto se movería a un servicio de identidad central —o a Amazon
+Cognito en el despliegue propuesto— y la validación pasaría de clave compartida a
+**JWKS**: el servicio descargaría las claves públicas del emisor, que puede rotarlas sin
+redesplegar, y dejaría de conocer ningún secreto de firma. Es un cambio de
+configuración, no de código.
 
 📁 `SecurityConfig`, `AuthenticatedClient`
 

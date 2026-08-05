@@ -1,5 +1,6 @@
 package com.cobre.notifications.infrastructure.adapter.in.web;
 
+import com.cobre.notifications.domain.exception.InvalidClientCredentialsException;
 import com.cobre.notifications.domain.exception.InvalidNotificationEventException;
 import com.cobre.notifications.domain.exception.InvalidQueryException;
 import com.cobre.notifications.domain.exception.NotificationEventNotFoundException;
@@ -39,6 +40,16 @@ public class ApiExceptionHandler {
     @ExceptionHandler(ReplayNotAllowedException.class)
     public ProblemDetail handleReplayNotAllowed(ReplayNotAllowedException e) {
         return problem(HttpStatus.CONFLICT, "Reenvio no permitido", e.getMessage(), "replay-not-allowed");
+    }
+
+    /**
+     * Credenciales invalidas. Un unico mensaje para cliente inexistente, secreto
+     * incorrecto y credencial desactivada: distinguirlos permitiria averiguar que
+     * identificadores existen.
+     */
+    @ExceptionHandler(InvalidClientCredentialsException.class)
+    public ProblemDetail handleInvalidCredentials(InvalidClientCredentialsException e) {
+        return problem(HttpStatus.UNAUTHORIZED, "Credenciales invalidas", e.getMessage(), "invalid-client");
     }
 
     @ExceptionHandler(InvalidQueryException.class)
