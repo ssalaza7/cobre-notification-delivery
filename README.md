@@ -297,11 +297,11 @@ mensaje va a la DLQ y el endpoint de reenvío queda disponible.
 El enunciado entrega la URL destino el mismo día de la presentación. Este es el
 recorrido, ensayado de punta a punta.
 
-### Antes de entrar (una sola vez)
+### Antes de entrar
 
 ```bash
 docker compose up -d
-SPRING_PROFILES_ACTIVE=demo ./gradlew bootRun
+./gradlew bootJar        # compila una sola vez, antes de la presentación
 ```
 
 El perfil `demo` existe para esto: **exige HTTPS y bloquea destinos internos**, como en
@@ -312,13 +312,25 @@ minutos.
 
 ### Cuando te den la URL
 
+El destino es una **variable de entorno**. Es configuración, y como tal no debería
+vivir en la base de datos ni cambiarse con un `UPDATE` en vivo:
+
 ```bash
-./scripts/set-webhook-url.sh https://el-destino-que-me-dieron/webhook
+SPRING_PROFILES_ACTIVE=demo \
+WEBHOOK_OVERRIDE_URL=https://el-destino-que-me-dieron/webhook \
+java -jar build/libs/notification-delivery-service-0.0.1-SNAPSHOT.jar
 ```
 
-**Sin reiniciar.** El adaptador consulta la base en cada entrega, así que el cambio
-aplica desde la siguiente notificación. Reiniciar serían cincuenta segundos de silencio
-delante del panel.
+**Arranca en menos de 3 segundos.** Por eso importa haber compilado antes: `./gradlew
+bootRun` tarda casi un minuto, pero eso es Gradle compilando, no la aplicación
+levantando. Con el jar ya construido, cambiar de destino es reiniciar y seguir hablando.
+
+`WEBHOOK_OVERRIDE_URL` tiene precedencia sobre lo que haya en la tabla `subscription`,
+así que no hay que tocar datos para redirigir la demostración.
+
+> Alternativa sin reiniciar: `./scripts/set-webhook-url.sh <url>` cambia el destino en
+> la base y aplica desde la siguiente notificación. Sirve si te dan una segunda URL a
+> mitad de la demostración, pero la variable de entorno es la vía limpia.
 
 ### Disparar y mostrar
 
