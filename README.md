@@ -233,6 +233,40 @@ mensaje va a la DLQ y el endpoint de reenvío queda disponible.
 
 ---
 
+## Entregar a una URL externa (modo estricto)
+
+El destino de todas las suscripciones se puede sustituir con una variable de entorno,
+sin tocar la base de datos:
+
+```bash
+WEBHOOK_OVERRIDE_URL=https://el-destino-que-me-den/webhook ./gradlew bootRun
+```
+
+Sin el perfil `local`, la validación va en modo estricto: **se exige HTTPS** y se
+rechazan destinos que resuelvan a la red interna.
+
+**Verificado contra un endpoint HTTPS público real:**
+
+```
+estado   : completed
+destino  : https://postman-echo.com/post
+intentos : 1
+  intento 1: delivered http=200 1432ms
+```
+
+Y el control de seguridad no es decorativo. Con el mismo destino en `http://`:
+
+```
+estado  : failed
+error   : El webhook debe usar HTTPS; se recibio esquema 'http'
+intentos: 1
+```
+
+Un solo intento: una URL inválida es un fallo permanente y no gasta reintentos, porque
+insistir no la va a arreglar.
+
+---
+
 ## Observabilidad
 
 ### Logs estructurados en Kibana
