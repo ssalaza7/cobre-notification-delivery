@@ -456,7 +456,7 @@
     },
     {
       "name": "2 · API self-service",
-      "description": "Lo que consume un cliente de Cobre. Es la referencia del contrato.\n\nLas tres operaciones que pide el enunciado, más la obtención del token, más las dos respuestas de error que un integrador necesita conocer para programar bien su lado.",
+      "description": "Lo que un cliente ejecuta en su dia a dia: obtener el token y las tres operaciones del enunciado.\n\nLos codigos de error de cada operacion estan documentados en la descripcion de cada peticion, no como peticiones aparte.",
       "item": [
         {
           "name": "POST /oauth/token",
@@ -702,94 +702,6 @@
               ]
             },
             "description": "Reenvía una notificación cuya entrega falló definitivamente.\n\nResponde **202**: el reenvío quedó encolado, no entregado. El resultado se consulta después con el endpoint de detalle.\n\n**Errores:** `409` si la notificación no está en `failed` —reenviar una entregada la duplicaría, y reenviar una en curso competiría con el reintento ya programado—, `403` si el token no tiene el permiso `notifications:replay`, `404` si es de otro cliente."
-          }
-        },
-        {
-          "name": "Notificación de otro cliente → 404",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Responde 404 y no 403', () => pm.response.to.have.status(404));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/notification_events/{{foreign_event_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "notification_events",
-                "{{foreign_event_id}}"
-              ]
-            },
-            "description": "`EVT005` pertenece a otro cliente.\n\nResponde **404 y no 403** a propósito: un 403 confirmaría que el recurso existe y convertiría la API en un oráculo para enumerar identificadores ajenos. Hacia afuera, \"no existe\" y \"no es tuyo\" son indistinguibles."
-          }
-        },
-        {
-          "name": "Reenviar sin permiso → 403",
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// Token de un cliente registrado solo con permiso de lectura.",
-                  "pm.sendRequest({",
-                  "    url: pm.collectionVariables.get('base_url') + '/oauth/token',",
-                  "    method: 'POST',",
-                  "    header: { 'Content-Type': 'application/json' },",
-                  "    body: { mode: 'raw', raw: JSON.stringify({",
-                  "        grant_type: 'client_credentials',",
-                  "        client_id: pm.collectionVariables.get('readonly_client_id'),",
-                  "        client_secret: pm.collectionVariables.get('readonly_client_secret')",
-                  "    })}",
-                  "}, (err, res) => pm.collectionVariables.set('readonly_token', res.json().access_token));"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Autenticado si, autorizado no', () => pm.response.to.have.status(403));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{readonly_token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/notification_events/{{foreign_event_id}}/replay",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "notification_events",
-                "{{foreign_event_id}}",
-                "replay"
-              ]
-            },
-            "description": "El token es de un cliente registrado **solo con permiso de lectura**, y la notificación sí le pertenece: el 403 es por falta de permiso, no por pertenencia.\n\nConsultar y reenviar son autorizaciones distintas: un panel de consulta no debería poder disparar reenvíos."
           }
         }
       ]

@@ -216,7 +216,11 @@ historia del ciclo anterior.
 **No depende de datos sembrados.** Cada ejecución crea sus propios eventos, así que se
 puede correr las veces que haga falta — en el ensayo y en vivo.
 
-### 2 · API self-service — 7 peticiones
+### 2 · API self-service — 5 peticiones
+
+Lo que un cliente ejecuta en su día a día: obtener el token y las tres operaciones del
+enunciado. Los códigos de error van documentados en la descripción de cada petición, no
+como peticiones aparte.
 
 ---
 
