@@ -2,6 +2,10 @@ spring:
   application:
     name: notification-delivery-service
 
+  # Credenciales de la base. Los valores por defecto corresponden al contenedor local
+  # desechable que levanta docker-compose y no dan acceso a nada: mantenerlos evita
+  # convertir "clonar y correr" en un ritual. En cualquier entorno real DB_PASSWORD se
+  # inyecta desde el gestor de secretos.
   r2dbc:
     url: r2dbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:notifications}
     username: ${DB_USER:cobre}
@@ -61,11 +65,14 @@ cobre:
 
   security:
     jwt:
-      # Solo el VALOR es de desarrollo: la validacion del token (firma, algoritmo
-      # fijado, expiracion y scopes) es la misma en produccion. En produccion la clave
-      # se inyecta por entorno o secret manager, y el paso natural es validar por JWKS
-      # contra un proveedor OIDC en vez de usar clave compartida.
-      secret: ${JWT_SECRET:cobre-local-development-secret-key-please-change-me}
+      # SIN VALOR POR DEFECTO, a proposito. Un secreto escrito en el repositorio queda
+      # en el historial de git para siempre, aunque despues se borre, y se filtra a
+      # cualquiera que clone. La aplicacion falla al arrancar si no se inyecta.
+      #
+      # En local se toma de un archivo .env que no se versiona (ver .env.example).
+      # En AWS se inyecta desde Secrets Manager, que ademas permite rotarlo sin
+      # redesplegar y deja registro de cada acceso en CloudTrail.
+      secret: ${JWT_SECRET}
       # Vigencia corta: un JWT no se puede revocar sin una lista de revocacion, asi que
       # la vida breve es el unico control real sobre un token filtrado.
       token-ttl: 1h

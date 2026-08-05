@@ -73,11 +73,29 @@ de Spring, sin base de datos y sin broker, en menos de dos segundos.
 
 ## Cómo correr
 
-### 0. Prerrequisitos
+### 0. Prerrequisitos y secretos
 
 - Docker corriendo
 - Java 21 — si no lo tienes, Gradle lo descarga solo (toolchain configurada)
 - No necesitas instalar Gradle: usa `./gradlew`
+
+**No hay secretos escritos en el código.** La clave de firma de tokens no tiene valor
+por defecto y la aplicación **no arranca sin ella**: un secreto commiteado queda en el
+historial de git para siempre, aunque después se borre.
+
+```bash
+cp .env.example .env
+openssl rand -base64 48        # pega el resultado en JWT_SECRET dentro de .env
+set -a; source .env; set +a
+```
+
+`.env` está en `.gitignore`; lo versionado es solo la plantilla. En AWS esa variable se
+inyecta desde **Secrets Manager**, que permite rotarla sin redesplegar y deja registro
+de cada acceso en CloudTrail.
+
+> Las contraseñas de Postgres y RabbitMQ sí tienen valor por defecto, y es deliberado:
+> son contenedores locales desechables que no dan acceso a nada. Tratarlas como secretos
+> sería teatro; en entornos reales vienen del gestor igual que la clave de firma.
 
 ### 1. Levantar la infraestructura
 
@@ -300,8 +318,10 @@ recorrido, ensayado de punta a punta.
 ### Antes de entrar
 
 ```bash
+cp .env.example .env && openssl rand -base64 48   # pega el valor en JWT_SECRET
+set -a; source .env; set +a
 docker compose up -d
-./gradlew bootJar        # compila una sola vez, antes de la presentación
+./gradlew bootJar                                  # compila una sola vez, antes de entrar
 ```
 
 El perfil `demo` existe para esto: **exige HTTPS y bloquea destinos internos**, como en

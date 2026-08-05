@@ -80,13 +80,35 @@ public class SecurityConfig {
                 .build();
     }
 
+    /** Longitud minima de la clave HS256: por debajo del tamano del hash, la fuerza bruta es viable. */
+    private static final int MIN_SECRET_BYTES = 32;
+
     @Bean
     ReactiveJwtDecoder jwtDecoder(SecurityProperties properties) {
-        byte[] secret = properties.jwt().secret().getBytes(StandardCharsets.UTF_8);
-        if (secret.length < 32) {
-            // HS256 con una clave mas corta que el tamano del hash es fuerza bruta viable.
+        String configured = properties.jwt().secret();
+
+        // Sin valor, o con el marcador sin resolver porque la variable no existe.
+        if (configured == null || configured.isBlank() || configured.startsWith("${")) {
+            throw new IllegalStateException("""
+                    JWT_SECRET no esta definido.
+
+                    No tiene valor por defecto a proposito: un secreto escrito en el \
+                    repositorio queda en el historial de git para siempre y se filtra a \
+                    cualquiera que lo clone.
+
+                    En local:
+                        cp .env.example .env
+                        openssl rand -base64 48    # pega el resultado en JWT_SECRET
+                        set -a; source .env; set +a
+
+                    En AWS se inyecta desde Secrets Manager.""");
+        }
+
+        byte[] secret = configured.getBytes(StandardCharsets.UTF_8);
+        if (secret.length < MIN_SECRET_BYTES) {
             throw new IllegalStateException(
-                    "cobre.security.jwt.secret debe tener al menos 32 bytes para HS256");
+                    "JWT_SECRET tiene " + secret.length + " bytes y necesita al menos "
+                            + MIN_SECRET_BYTES + " para HS256. Genere uno con: openssl rand -base64 48");
         }
         return NimbusReactiveJwtDecoder
                 .withSecretKey(new SecretKeySpec(secret, "HmacSHA256"))

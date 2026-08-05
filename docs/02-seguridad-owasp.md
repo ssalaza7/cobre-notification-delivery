@@ -279,6 +279,61 @@ cortarse: un límite dentro de la aplicación ya pagó el costo de aceptar la co
 
 ---
 
+## Gestión de secretos
+
+**Ningún secreto está escrito en el código.** Es un lineamiento y no una preferencia:
+un valor escrito en el repositorio queda en el historial de git **para siempre**, aunque
+después se borre en un commit posterior, y se filtra a cualquiera que clone. Rotarlo
+obliga a reescribir la historia.
+
+### Qué es secreto y qué no
+
+Tratar todo igual es teatro. La distinción que se aplica aquí:
+
+| Dato | Trato | Por qué |
+|---|---|---|
+| `JWT_SECRET` | **Sin valor por defecto.** La aplicación no arranca sin él | Firma los tokens: quien lo tenga puede emitir tokens de cualquier cliente |
+| `signing_secret` de webhooks | En base de datos; debe cifrarse con KMS | Permite falsificar notificaciones hacia el cliente |
+| Secretos de clientes de API | Solo el **hash bcrypt**; el valor en claro no existe en ninguna parte | Un volcado de la base no permite suplantar a nadie |
+| Credenciales de Postgres y RabbitMQ locales | Valores por defecto en el repositorio | Son contenedores desechables de `docker-compose`; no dan acceso a nada. En entornos reales vienen del gestor |
+
+### Cómo se inyectan
+
+**En local:** un archivo `.env` que no se versiona. `.env.example` es la plantilla,
+sin valores reales, con el comando para generar el secreto (`openssl rand -base64 48`).
+
+**En AWS:** **Secrets Manager**, montado como variable de entorno en la definición de
+tarea de ECS. Ventajas sobre escribirlo en la configuración:
+
+- **Rotación sin redesplegar**, con rotación automática programada
+- **CloudTrail registra cada acceso**: queda auditoría de quién leyó qué y cuándo
+- **Cifrado en reposo con KMS** y permisos por rol de IAM
+- El secreto **nunca pasa por el repositorio ni por el pipeline**
+
+Para valores de configuración que no son secretos (URLs, tiempos de espera, tamaños de
+lote) basta **Parameter Store**, que es gratuito y suficiente.
+
+### Las credenciales de demostración no están en las migraciones de producción
+
+`db/migration` crea la tabla `api_credential` y **no siembra ninguna fila**. Las
+credenciales de demostración viven en `db/demo`, una ruta que solo cargan los perfiles
+`local` y `demo`.
+
+En producción esas filas las crea el proceso de onboarding: se genera un secreto
+aleatorio, se le muestra **una única vez** al cliente y solo se persiste su hash.
+Sembrar credenciales desde una migración pondría secretos en el repositorio.
+
+### Lo que falta
+
+- **El `signing_secret` de las suscripciones sigue en claro en la base.** Debe cifrarse
+  con KMS o moverse a Secrets Manager con referencia desde la fila.
+- **Sin rotación automática.** Rotar la clave de firma hoy invalidaría todos los tokens
+  vigentes; hacerlo sin cortar exige aceptar dos claves durante una ventana de gracia.
+- **Sin escaneo de secretos en el pipeline.** Una herramienta como `gitleaks` en CI
+  impediría que un descuido llegue al repositorio.
+
+---
+
 ## Transversales
 
 **Los errores no filtran nada.** El manejador genérico devuelve un identificador de

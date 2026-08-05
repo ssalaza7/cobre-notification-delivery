@@ -16,15 +16,10 @@ CREATE TABLE api_credential (
     last_used_at  TIMESTAMPTZ
 );
 
--- Credenciales de demostracion. Los tres clientes del archivo notification_events.json.
+-- Esta migracion NO siembra credenciales. En produccion las filas de esta tabla las
+-- crea el proceso de onboarding del cliente: se genera un secreto aleatorio, se le
+-- muestra una unica vez y solo se persiste su hash. Sembrar credenciales desde una
+-- migracion pondria secretos en el repositorio y en el historial de git.
 --
--- CLIENT003 no tiene permiso de reenvio a proposito: sirve para demostrar que consultar
--- y reenviar son autorizaciones distintas, y que un token de solo lectura recibe 403 al
--- intentar disparar un reenvio.
-INSERT INTO api_credential (client_id, secret_hash, scopes) VALUES
-    ('CLIENT001', crypt('demo-secret-client001', gen_salt('bf', 10)),
-     'notifications:read notifications:replay notifications:monitor'),
-    ('CLIENT002', crypt('demo-secret-client002', gen_salt('bf', 10)),
-     'notifications:read notifications:replay notifications:monitor'),
-    ('CLIENT003', crypt('demo-secret-client003', gen_salt('bf', 10)),
-     'notifications:read');
+-- Las credenciales de demostracion viven en db/demo, que solo se carga en los perfiles
+-- `local` y `demo` (ver spring.flyway.locations).
