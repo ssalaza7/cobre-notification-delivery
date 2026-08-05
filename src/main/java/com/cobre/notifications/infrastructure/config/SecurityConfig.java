@@ -36,8 +36,12 @@ import java.time.Duration;
  *       publique a internet.</li>
  * </ul>
  *
- * <p>La clave HS256 compartida es adecuada para esta prueba. En produccion el paso
- * natural es validar contra el IdP de Cobre por JWKS, que rota claves sin
+ * <p><b>Este servicio valida tokens; no los emite.</b> Emitir identidad pertenece a
+ * otro contexto: un servicio de notificaciones no deberia administrar credenciales.
+ *
+ * <p>La clave HS256 compartida es adecuada para esta prueba porque permite correr el
+ * proyecto sin desplegar un emisor. El paso natural es validar por JWKS contra un
+ * proveedor OIDC -Amazon Cognito en el despliegue propuesto-, que rota claves sin
  * redesplegar y evita que el servicio conozca ningun secreto de firma.
  */
 @Configuration

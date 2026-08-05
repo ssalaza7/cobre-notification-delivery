@@ -61,8 +61,10 @@ cobre:
 
   security:
     jwt:
-      # SOLO PARA DESARROLLO LOCAL. En produccion se inyecta por variable de entorno
-      # o secret manager, y lo natural es validar contra el IdP de Cobre (JWKS).
+      # Solo el VALOR es de desarrollo: la validacion del token (firma, algoritmo
+      # fijado, expiracion y scopes) es la misma en produccion. En produccion la clave
+      # se inyecta por entorno o secret manager, y el paso natural es validar por JWKS
+      # contra un proveedor OIDC en vez de usar clave compartida.
       secret: ${JWT_SECRET:cobre-local-development-secret-key-please-change-me}
     rate-limit:
       enabled: true

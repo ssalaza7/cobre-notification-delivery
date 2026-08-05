@@ -14,7 +14,7 @@ public record SecurityProperties(Jwt jwt, RateLimit rateLimit) {
     /**
      * @param secret clave HS256. Debe tener al menos 32 bytes; en produccion se
      *               inyecta por variable de entorno y lo natural es migrar a
-     *               validacion por JWKS contra el IdP de Cobre.
+     *               validacion por JWKS contra un proveedor OIDC.
      */
     public record Jwt(String secret) {
     }

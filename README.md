@@ -322,7 +322,8 @@ Dichas antes de que las pregunten:
    accidental, no el deliberado. En AWS pertenece al WAF.
 3. **Sin pruebas de integración con infraestructura real.**
 4. **Secretos de firma en texto plano en la base.** Deben ir cifrados con KMS.
-5. **HS256 con secreto compartido.** En producción, JWKS contra el IdP de Cobre.
+5. **No hay emisor de tokens.** El servicio valida pero no emite; los tokens de prueba se
+   firman con un script local. En producción, un proveedor OIDC y validación por JWKS.
 6. **La DLQ no tiene proceso automático** de reproceso ni alarma por profundidad.
 
 ---

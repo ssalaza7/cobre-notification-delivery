@@ -123,9 +123,15 @@ mapa operativo del sistema. Verificado: devuelve 401 sin token.
 
 ### Lo que falta para producción
 
-HS256 con secreto compartido es adecuado para esta prueba, no para producción. El paso
-natural es **validación por JWKS contra el IdP de Cobre**: rota claves sin redesplegar
-y el servicio deja de conocer ningún secreto de firma.
+**Este servicio valida tokens; no los emite.** Emitir identidad es otro contexto: un
+servicio de notificaciones no debería administrar credenciales. Para la prueba los
+tokens se firman con un script local (`scripts/generate-token.py`), porque desplegar un
+emisor completo excede el alcance del ejercicio.
+
+En el despliegue propuesto el emisor es **Amazon Cognito**, y la validación pasa de
+clave compartida a **JWKS**: el servicio descarga las claves públicas del emisor, que
+puede rotarlas sin redesplegar, y deja de conocer ningún secreto de firma. Es un cambio
+de configuración, no de código.
 
 📁 `SecurityConfig`, `AuthenticatedClient`
 

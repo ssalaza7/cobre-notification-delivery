@@ -580,8 +580,9 @@ Cosas que faltan, dichas antes de que las pregunte el panel:
    Secrets Manager.
 5. **La DLQ no tiene proceso automático.** Hoy se inspecciona a mano; falta una alarma
    por profundidad y un flujo de reproceso masivo.
-6. **HS256 con secreto compartido.** Adecuado para la prueba; en producción, validación
-   por JWKS contra el IdP de Cobre, que rota claves sin redesplegar.
+6. **No hay emisor de tokens.** El servicio valida pero no emite, y emitir identidad
+   pertenece a otro contexto. Para la prueba los tokens se firman con un script local;
+   en el despliegue propuesto el emisor es Amazon Cognito y la validación pasa a JWKS.
 
 ---
 
