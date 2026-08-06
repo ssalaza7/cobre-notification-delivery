@@ -9,10 +9,9 @@ import java.util.random.RandomGenerator;
  * Politica de reintentos: backoff exponencial con jitter, expresado como una lista
  * de escalones de espera.
  *
- * <p>Los escalones son explicitos (5s, 30s, 2m, 10m, 30m) en vez de calculados con
- * una formula porque el adaptador AMQP necesita una cola de retardo por escalon.
- * Una lista fija hace que la topologia del broker y la politica no puedan
- * desincronizarse.
+ * <p>Los escalones son explicitos (5s, 30s, 2m, 10m, 15m) en vez de calculados con una
+ * formula: asi la politica se lee de un vistazo y se ajusta sin tocar codigo. Ninguno
+ * puede superar los 15 minutos, que es el tope de retardo por mensaje que impone SQS.
  *
  * <p>El jitter evita el efecto manada: si el webhook de un cliente se cae un minuto,
  * todas sus notificaciones fallan a la vez y sin jitter reintentarian todas en el
