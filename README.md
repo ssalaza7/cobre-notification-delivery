@@ -430,6 +430,44 @@ insistir no la va a arreglar.
 
 ## Observabilidad
 
+### Cómo encajan las piezas
+
+**Tu aplicación no envía métricas a nadie.** Solo las publica en `/actuator/prometheus`,
+que es una foto del instante: cuántas entregas van, cuánto tardó la última.
+
+Pero un tablero necesita **historia**, no una foto. Ahí entra Prometheus:
+
+```
+Prometheus  ──GET /actuator/prometheus──>  la aplicación
+            (cada 5 segundos, y guarda)
+```
+
+Prometheus **consulta el endpoint periódicamente y guarda cada lectura**. Nadie le envía
+nada: él va y pregunta. Es como un lector de medidor que pasa cada rato a anotar la
+cifra, en vez de que el medidor lo llame. En inglés a eso se le dice *scraping*.
+
+Grafana no habla con la aplicación: le pregunta a Prometheus, que es quien tiene el
+histórico.
+
+```
+la aplicación  →  Prometheus  →  Grafana
+   (publica)      (consulta y     (dibuja)
+                   almacena)
+```
+
+Con los logs pasa lo mismo pero al revés en el último tramo: la aplicación escribe JSON,
+**Filebeat lo lee y lo envía** a Elasticsearch, y Kibana consulta ahí.
+
+```
+la aplicación  →  Filebeat  →  Elasticsearch  →  Kibana
+   (escribe)      (lee y        (indexa)         (consulta)
+                   envía)
+```
+
+**En los dos casos la aplicación no conoce el destino final.** Por eso cambiar Prometheus
+por Datadog, o Elasticsearch por otra cosa, no toca una línea de código: en AWS el agente
+de Datadog consulta exactamente el mismo endpoint y guarda la misma serie.
+
 ### Consolas para la demostración
 
 ```bash
