@@ -10,11 +10,11 @@ import reactor.core.publisher.Mono;
 /**
  * Puerto de salida hacia el almacen de notificaciones.
  *
- * <p>Nota sobre la pureza hexagonal: la firma usa {@code Mono}/{@code Flux}. Reactor
- * es una libreria de composicion asincrona, no un framework de infraestructura; el
- * dominio y los casos de uso siguen sin conocer Spring, HTTP, SQL ni AMQP. La
- * alternativa (devolver {@code CompletionStage}) obligaria a traducir en cada
- * adaptador sin ganar independencia real.
+ * <p>Nota sobre la pureza hexagonal: la firma usa {@code Mono}/{@code Flux}. Reactor es
+ * una libreria de composicion asincrona, no un framework de infraestructura; el dominio
+ * y los casos de uso siguen sin conocer Spring, HTTP, SQL ni ningun broker. La
+ * alternativa (devolver {@code CompletionStage}) obligaria a traducir en cada adaptador
+ * sin ganar independencia real.
  */
 public interface NotificationEventRepositoryPort {
 

@@ -70,7 +70,8 @@ class RetryPolicyTest {
         assertThat(jittered).isPresent();
         assertThat(jittered.get()).isGreaterThanOrEqualTo(Duration.ofSeconds(5));
         assertThat(jittered.get()).isLessThan(Duration.ofSeconds(6));
-        // La invariante que permite al adaptador AMQP elegir la cola por el valor jitterado.
+        // El jitter nunca alcanza el escalon siguiente: las esperas se dispersan sin
+        // desordenar la progresion del backoff.
         assertThat(jittered.get()).isLessThan(DELAYS.get(1));
     }
 

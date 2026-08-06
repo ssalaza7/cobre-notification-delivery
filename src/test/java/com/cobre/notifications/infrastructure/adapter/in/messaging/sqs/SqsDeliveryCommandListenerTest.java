@@ -29,9 +29,8 @@ import static org.mockito.Mockito.when;
 /**
  * En SQS confirmar un mensaje significa <b>borrarlo</b>.
  *
- * <p>Mientras no se borre, reaparece al vencer el visibility timeout. El efecto es el
- * mismo que el ack de AMQP: si el proceso muere a mitad del procesamiento, el mensaje
- * vuelve y la notificacion no se pierde.
+ * <p>Mientras no se borre, reaparece al vencer el visibility timeout: si el proceso
+ * muere a mitad del procesamiento, el mensaje vuelve y la notificacion no se pierde.
  */
 class SqsDeliveryCommandListenerTest {
 

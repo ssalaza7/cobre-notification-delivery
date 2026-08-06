@@ -23,8 +23,9 @@ import java.time.Duration;
  * Consume los eventos que la plataforma publica en Kafka.
  *
  * <p>Es el punto donde este servicio se engancha al resto de la plataforma, y el unico
- * acople es el contrato del mensaje: recibe el mismo JSON que el adaptador de RabbitMQ
- * y llama al mismo caso de uso.
+ * acople es el contrato del mensaje. Si manana la plataforma cambiara de bus, se
+ * reescribe esta clase y nada mas: el caso de uso recibe el mismo comando venga de
+ * donde venga.
  *
  * <p>Kafka funciona distinto a una cola y conviene tenerlo claro:
  *
