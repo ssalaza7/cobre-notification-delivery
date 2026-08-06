@@ -5,7 +5,7 @@ plugins { id("org.springframework.boot") }
  * cliente de webhooks ni la cadena de seguridad de la API.
  */
 dependencies {
-    implementation(project(":kit"))
+    implementation(project(":cobre-notificacion-kit"))
     implementation("io.projectreactor.kafka:reactor-kafka:1.3.23")
 
     // No sirve trafico de negocio: expone /actuator para las sondas del orquestador y

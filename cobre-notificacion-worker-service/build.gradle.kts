@@ -8,6 +8,6 @@ plugins { id("org.springframework.boot") }
  * WebFlux entra por el cliente, no por el servidor: este modulo no expone HTTP.
  */
 dependencies {
-    implementation(project(":kit"))
+    implementation(project(":cobre-notificacion-kit"))
     implementation("org.springframework.boot:spring-boot-starter-webflux")
 }

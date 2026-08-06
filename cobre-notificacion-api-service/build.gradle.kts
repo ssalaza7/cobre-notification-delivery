@@ -5,7 +5,7 @@ plugins { id("org.springframework.boot") }
  * que declara la cadena de seguridad y la validacion de peticiones.
  */
 dependencies {
-    implementation(project(":kit"))
+    implementation(project(":cobre-notificacion-kit"))
     implementation("org.springframework.boot:spring-boot-starter-webflux")
     implementation("org.springframework.boot:spring-boot-starter-validation")
 

@@ -104,18 +104,24 @@ Cada componente tiene su propia capa de aplicación y sus adaptadores. Lo único
 el interior del hexágono.
 
 ```
-domain/       modelo · reglas · puertos            sin framework, sin dependencias
-kit/          implementa los puertos compartidos:  R2DBC · SQS · Micrometer · logs
+cobre-notificacion-domain/            modelo · reglas · puertos
+                                      sin framework, sin dependencias
 
-consumer/     application/  IngestNotificationEventService
-              infrastructure/  adaptador Kafka
+cobre-notificacion-kit/               implementa los puertos compartidos:
+                                      R2DBC · SQS · Micrometer · logs
 
-worker/       application/  DeliverNotificationEventService
-              infrastructure/  cola SQS · WebClient + HMAC + anti-SSRF
+cobre-notificacion-consumer-service/  application/     IngestNotificationEventService
+                                      infrastructure/  adaptador Kafka
 
-api/          application/  Query · Get · Replay · IssueAccessToken
-              infrastructure/  REST · seguridad · emisión de tokens
+cobre-notificacion-worker-service/    application/     DeliverNotificationEventService
+                                      infrastructure/  cola SQS · WebClient + HMAC
+
+cobre-notificacion-api-service/       application/     Query · Get · Replay · Token
+                                      infrastructure/  REST · seguridad · tokens
 ```
+
+El sufijo `-service` marca lo que se despliega. Los dos módulos sin sufijo no producen
+contenedor: viajan dentro de los tres ejecutables.
 
 Los casos de uso viven donde se usan: ninguno lo comparten dos componentes. El modelo sí se
 comparte, porque los tres operan sobre las mismas tablas y la misma máquina de estados;
@@ -350,9 +356,9 @@ docker compose up -d
 python3 scripts/webhook-receiver.py
 
 # 4. Los tres ejecutables, en terminales separadas
-SPRING_PROFILES_ACTIVE=local java -jar api/build/libs/api-0.0.1-SNAPSHOT.jar
-SPRING_PROFILES_ACTIVE=local java -jar worker/build/libs/worker-0.0.1-SNAPSHOT.jar
-SPRING_PROFILES_ACTIVE=local java -jar consumer/build/libs/consumer-0.0.1-SNAPSHOT.jar
+SPRING_PROFILES_ACTIVE=local java -jar cobre-notificacion-api-service/build/libs/cobre-notificacion-api-service-0.0.1-SNAPSHOT.jar
+SPRING_PROFILES_ACTIVE=local java -jar cobre-notificacion-worker-service/build/libs/cobre-notificacion-worker-service-0.0.1-SNAPSHOT.jar
+SPRING_PROFILES_ACTIVE=local java -jar cobre-notificacion-consumer-service/build/libs/cobre-notificacion-consumer-service-0.0.1-SNAPSHOT.jar
 
 # 5. Publicación de un evento
 ./scripts/publish-event.sh EVT-DEMO-1 CLIENT001 credit_transfer "Transferencia por 1.500.000"

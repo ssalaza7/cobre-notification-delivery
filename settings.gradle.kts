@@ -1,10 +1,13 @@
 rootProject.name = "notification-delivery-service"
 
-// Dos librerias y tres ejecutables.
+// Tres servicios desplegables y dos librerias que comparten.
 //
-//   domain    modelo, reglas y puertos. Sin framework y sin dependencias.
-//   kit       plomeria transversal que implementa esos puertos: persistencia, cola,
-//             metricas y utilidades de log. No sabe que es una notificacion.
-//
-// Cada ejecutable trae su propia capa de aplicacion y sus adaptadores.
-include("domain", "kit", "consumer", "worker", "api")
+// El sufijo -service marca lo que se despliega: cada uno produce su propio jar
+// ejecutable y su propio contenedor. Lo que no lo lleva viaja dentro de los tres.
+include(
+    "cobre-notificacion-consumer-service",
+    "cobre-notificacion-worker-service",
+    "cobre-notificacion-api-service",
+    "cobre-notificacion-domain",
+    "cobre-notificacion-kit",
+)

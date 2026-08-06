@@ -8,7 +8,7 @@ plugins { `java-library` }
  * ese ejecutable, no aqui.
  */
 dependencies {
-    api(project(":domain"))
+    api(project(":cobre-notificacion-domain"))
 
     api("org.springframework.boot:spring-boot-starter-json")
 
