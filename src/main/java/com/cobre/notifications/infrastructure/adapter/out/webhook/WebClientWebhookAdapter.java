@@ -5,8 +5,10 @@ import com.cobre.notifications.domain.exception.InvalidWebhookUrlException;
 import com.cobre.notifications.domain.model.WebhookDeliveryRequest;
 import com.cobre.notifications.domain.model.WebhookDeliveryResult;
 import com.cobre.notifications.infrastructure.config.WebhookProperties;
+import com.cobre.notifications.infrastructure.observability.LogFields;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -105,6 +107,7 @@ public class WebClientWebhookAdapter implements WebhookClientPort {
 
     private Mono<WebhookDeliveryResult> classify(ClientResponse response, LongSupplier elapsed) {
         HttpStatusCode status = response.statusCode();
+        logDelivery(status.value(), elapsed.getAsLong());
 
         if (status.is2xxSuccessful()) {
             // No interesa el cuerpo de una respuesta exitosa, pero hay que liberarlo
@@ -130,6 +133,23 @@ public class WebClientWebhookAdapter implements WebhookClientPort {
      */
     private boolean isRetryable(HttpStatusCode status) {
         return status.is5xxServerError() || RETRYABLE_STATUSES.contains(status.value());
+    }
+
+    /**
+     * Deja una linea por intento de entrega, con el codigo que devolvio el destino y
+     * cuanto tardo, como campos indexados y no como texto dentro del mensaje.
+     */
+    private void logDelivery(int status, long millis) {
+        MDC.put(LogFields.LOG_TYPE, LogFields.TYPE_DELIVERY);
+        MDC.put("http.status", String.valueOf(status));
+        MDC.put("duration_ms", String.valueOf(millis));
+        try {
+            log.info("Entrega saliente -> {} en {}ms", status, millis);
+        } finally {
+            MDC.remove(LogFields.LOG_TYPE);
+            MDC.remove("http.status");
+            MDC.remove("duration_ms");
+        }
     }
 
     private String snippet(String body) {

@@ -167,11 +167,13 @@ class LoggingContextWebFilterTest {
     @DisplayName("los campos de correlacion son pocos y estables: cada uno cuesta en el indice")
     void los_campos_son_pocos_y_estables() {
         assertThat(LogFields.ALL)
-                .containsExactly(LogFields.REQUEST_ID, LogFields.CLIENT_ID, LogFields.EVENT_ID);
+                .containsExactly(LogFields.REQUEST_ID, LogFields.CLIENT_ID,
+                        LogFields.EVENT_ID, LogFields.LOG_TYPE);
         assertThat(Map.of(
                 LogFields.REQUEST_ID, "request_id",
                 LogFields.CLIENT_ID, "client_id",
-                LogFields.EVENT_ID, "event_id"))
+                LogFields.EVENT_ID, "event_id",
+                LogFields.LOG_TYPE, "log_type"))
                 .allSatisfy((actual, expected) -> assertThat(actual).isEqualTo(expected));
     }
 }

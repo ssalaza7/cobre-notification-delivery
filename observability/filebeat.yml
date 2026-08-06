@@ -1,8 +1,8 @@
 # Filebeat lee el archivo JSON que escribe la aplicacion y lo envia a Elasticsearch.
 #
 # La aplicacion no conoce este archivo ni sabe que existe Elasticsearch: solo escribe
-# JSON en formato ECS. Cambiar el destino (OpenSearch en AWS, Datadog Logs, S3) es
-# cambiar esta configuracion, no la aplicacion.
+# JSON en formato ECS. Cambiar el destino (OpenSearch en AWS, otro colector) es cambiar
+# esta configuracion, no la aplicacion.
 
 filebeat.inputs:
   - type: filestream
@@ -20,10 +20,19 @@ filebeat.inputs:
           expand_keys: true
 
 processors:
-  # Metadatos utiles que no tiene sentido que produzca la aplicacion.
-  - add_host_metadata: ~
+  # Deliberadamente NO se usa add_host_metadata. Anadia once campos host.* que ademas
+  # describian el contenedor de Filebeat, no la maquina que ejecuta el servicio: ruido
+  # que no ayuda a monitorear y que hay que pagar en almacenamiento e indice.
   - drop_fields:
-      fields: ["agent", "ecs.version", "input", "log.offset"]
+      fields:
+        - agent          # metadatos del propio Filebeat
+        - ecs            # version del esquema
+        - input          # tipo de entrada
+        - host           # por si alguna version lo agrega igual
+        - log.file       # inode, device_id y ruta del archivo
+        - log.offset
+        - process.pid    # cambia en cada arranque y no sirve para correlacionar
+        - service.node
       ignore_missing: true
 
 output.elasticsearch:
@@ -34,7 +43,6 @@ setup.template.name: "cobre-notifications"
 setup.template.pattern: "cobre-notifications-*"
 setup.ilm.enabled: false
 
-# Kibana necesita saber donde esta para poder crear el patron de indice.
 setup.kibana:
   host: "http://kibana:5601"
 

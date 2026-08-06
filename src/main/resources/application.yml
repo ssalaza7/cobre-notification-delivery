@@ -121,6 +121,10 @@ management:
 
 logging:
   level:
+    root: WARN
+    # Solo lo nuestro habla en INFO. Flyway, Spring Data, Netty y reactor-rabbitmq
+    # producen decenas de lineas de arranque que no son traza de negocio y que en el
+    # indice de logs solo estorban a quien esta diagnosticando una entrega.
     com.cobre.notifications: INFO
 
   # Por defecto se escribe JSON en formato ECS (Elastic Common Schema) a stdout, que es

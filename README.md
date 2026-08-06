@@ -512,6 +512,37 @@ Grafana ya viene con la fuente de datos y el tablero cargados: se abre y funcion
 
 ### Logs estructurados en Kibana
 
+**Un flujo completo son ocho líneas**, no ochenta. Cada una identifica qué es y trae lo
+que sirve para monitorear:
+
+```
+negocio   -                    -          Token emitido para el cliente CLIENT002
+api       -                    -          POST /oauth/token          -> 200 (103ms)
+api       -                    CLIENT002  GET /notification_events   -> 200 (15ms)
+negocio   EVT-LIMPIO-1785980   CLIENT002  Evento aceptado y encolado para entrega
+delivery  EVT-LIMPIO-1785980   CLIENT002  Entrega saliente           -> 200 (4ms)
+negocio   EVT-LIMPIO-1785980   CLIENT002  Notificación entregada en el intento 1
+```
+
+El campo `log_type` separa **`api`** (una petición que entró, con su respuesta),
+**`delivery`** (un intento saliente hacia el webhook) y el resto, que es traza de
+negocio. En Kibana se filtra con `log_type : "api"` y ya.
+
+**Lo que se quitó a propósito**, y por qué:
+
+| Se eliminó | Razón |
+|---|---|
+| Los once campos `host.*` | Describían el contenedor de Filebeat, no la máquina del servicio |
+| `log.file.inode`, `device_id`, `offset` | Detalles del archivo, no del negocio |
+| `agent.*`, `input.*`, `ecs.version` | Metadatos del propio recolector |
+| `process.pid` | Cambia en cada arranque; no sirve para correlacionar |
+| Logs de Flyway, Spring Data y Netty | Ruido de arranque; `root` está en `WARN` |
+| Accesos a `/actuator` | Prometheus consulta cada 5s: serían ~17.000 líneas diarias inútiles |
+
+De **26 campos por documento a 14**. Menos almacenamiento, consultas más rápidas y,
+sobre todo, algo que un humano puede leer durante un incidente.
+
+
 ```bash
 docker compose --profile observability up -d
 ```
