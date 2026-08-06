@@ -26,9 +26,9 @@ flowchart LR
     USR["Cliente"]
 
     subgraph svc["Notification Delivery Service"]
-        CON["<b>event-consumer</b><br/>ingesta y encola"]
-        W["<b>delivery-worker</b><br/>entrega y reintenta"]
-        API["<b>monitoring-api</b><br/>consulta y reenvío"]
+        CON["<b>consumer</b><br/>ingesta y encola"]
+        W["<b>worker</b><br/>entrega y reintenta"]
+        API["<b>api</b><br/>consulta y reenvío"]
     end
 
     SVC -->|publica| K
@@ -61,9 +61,9 @@ explícita, con el motivo del descarte.
 
 | Componente | Responsabilidad | Señal de escalado |
 |---|---|---|
-| **event-consumer** | Ingesta desde el bus y encola la entrega | Retraso del consumidor |
-| **delivery-worker** | Entrega al webhook y aplica los reintentos | Profundidad de la cola |
-| **monitoring-api** | Consulta y reenvío manual | Peticiones por segundo |
+| **consumer** | Ingesta desde el bus y encola la entrega | Retraso del consumidor |
+| **worker** | Entrega al webhook y aplica los reintentos | Profundidad de la cola |
+| **api** | Consulta y reenvío manual | Peticiones por segundo |
 
 Se despliegan por separado porque sus cargas son de naturaleza distinta: el worker sigue el
 ritmo de la plataforma y la API el de las personas. Escalar una no debe obligar a provisionar
@@ -75,9 +75,9 @@ sobre los jars construidos:
 
 | Componente | Dependencia propia | Lo que no incluye |
 |---|---|---|
-| `event-consumer` | `reactor-kafka`, `kafka-clients` | Spring Security |
-| `delivery-worker` | cliente HTTP reactivo, firma HMAC | Kafka, Spring Security |
-| `monitoring-api` | Spring Security, resource server JWT | Kafka |
+| `consumer` | `reactor-kafka`, `kafka-clients` | Spring Security |
+| `worker` | cliente HTTP reactivo, firma HMAC | Kafka, Spring Security |
+| `api` | Spring Security, resource server JWT | Kafka |
 
 Qué adaptadores se activan lo determina el classpath de cada artefacto, no una condición
 evaluada al arrancar.
@@ -100,34 +100,44 @@ direcciones de conexión.
 
 ## 2. Arquitectura hexagonal
 
-Las capas atraviesan los módulos: la librería compartida contiene el interior del hexágono y
-los adaptadores se reparten según quién los use.
+Cada componente tiene su propia capa de aplicación y sus adaptadores. Lo único compartido es
+el interior del hexágono.
 
 ```
-common/
-  domain/            modelo puro, sin dependencias de framework
-  application/       port/in · port/out · casos de uso
-  infrastructure/    adaptadores compartidos: R2DBC · SQS · Micrometer · logs
+domain/       modelo · reglas · puertos            sin framework, sin dependencias
+kit/          implementa los puertos compartidos:  R2DBC · SQS · Micrometer · logs
 
-event-consumer/      adaptador de entrada: Kafka
-delivery-worker/     adaptador de entrada: cola SQS
-                     adaptador de salida:  WebClient + HMAC + anti-SSRF
-monitoring-api/      adaptador de entrada: REST + seguridad
+consumer/     application/  IngestNotificationEventService
+              infrastructure/  adaptador Kafka
+
+worker/       application/  DeliverNotificationEventService
+              infrastructure/  cola SQS · WebClient + HMAC + anti-SSRF
+
+api/          application/  Query · Get · Replay · IssueAccessToken
+              infrastructure/  REST · seguridad · emisión de tokens
 ```
+
+Los casos de uso viven donde se usan: ninguno lo comparten dos componentes. El modelo sí se
+comparte, porque los tres operan sobre las mismas tablas y la misma máquina de estados;
+duplicarlo no daría independencia sino divergencia.
+
+**`domain` no tiene Spring en el classpath**, así que la violación de la regla hexagonal no
+compila. Su única dependencia es Reactor, que es una librería de composición asíncrona y no un
+framework de infraestructura.
 
 Las dependencias apuntan siempre hacia el interior. Los paquetes `domain` y `application` no
 importan ninguna clase de Spring; el cableado reside en la clase de configuración de cada
 componente.
 
-**Organización del código.** Los tres componentes viven en un mismo repositorio, junto a una
-librería con lo que comparten. Es una decisión de organización, no de arquitectura: el diseño
-sería idéntico con tres repositorios y la librería publicada como artefacto. El monorepo evita
-versionar y publicar esa librería en cada cambio del dominio, a cambio de que un cambio en ella
-recompile los tres.
+**Organización del código.** Los cinco módulos viven en un mismo repositorio. Es una decisión
+de organización, no de arquitectura: el diseño sería idéntico con repositorios separados y las
+dos librerías publicadas como artefactos versionados. El repositorio único evita ese ciclo de
+publicación en cada cambio del dominio, a cambio de que un cambio en él recompile los tres
+componentes.
 
-Una funcionalidad se traslada a la librería compartida cuando la necesita un segundo
-componente, no antes: cada dependencia añadida allí la cargan los tres artefactos aunque dos no
-la utilicen.
+Algo se traslada a `kit` cuando lo necesita un segundo componente, no antes: cada dependencia
+añadida allí la cargan los tres artefactos aunque dos no la utilicen. El criterio para
+distinguirlo de `domain` es directo: si sabe qué es una notificación, no es kit.
 
 La consecuencia verificable es que las pruebas del dominio y de los casos de uso se ejecutan
 sin contexto de Spring, sin base de datos y sin broker.
@@ -145,10 +155,10 @@ los adaptadores correspondientes: ni el dominio ni los casos de uso cambian.
 sequenceDiagram
     participant P as Plataforma
     participant K as Kafka
-    participant CON as event-consumer
+    participant CON as consumer
     participant DB as PostgreSQL
     participant Q as SQS
-    participant W as delivery-worker
+    participant W as worker
     participant C as Webhook del cliente
 
     P->>K: publica evento
@@ -179,7 +189,7 @@ incluye la cabecera `X-Cobre-Event-Id` para que el receptor descarte repeticione
 ```mermaid
 sequenceDiagram
     participant Q as SQS
-    participant W as delivery-worker
+    participant W as worker
     participant C as Webhook del cliente
 
     Q->>W: intento 1
@@ -207,7 +217,7 @@ instante, generando un pico de carga sobre un sistema que acaba de restablecerse
 ```mermaid
 sequenceDiagram
     participant Q as SQS
-    participant W as delivery-worker
+    participant W as worker
     participant C as Webhook del cliente
     participant D as DLQ
 
@@ -231,10 +241,10 @@ reintentan, dado que la repetición produciría el mismo resultado.
 ```mermaid
 sequenceDiagram
     participant U as Cliente
-    participant API as monitoring-api
+    participant API as api
     participant DB as PostgreSQL
     participant Q as SQS
-    participant W as delivery-worker
+    participant W as worker
 
     U->>API: POST /oauth/token
     API-->>U: access_token
@@ -329,9 +339,9 @@ docker compose up -d
 python3 scripts/webhook-receiver.py
 
 # 4. Los tres ejecutables, en terminales separadas
-SPRING_PROFILES_ACTIVE=local java -jar monitoring-api/build/libs/monitoring-api-0.0.1-SNAPSHOT.jar
-SPRING_PROFILES_ACTIVE=local java -jar delivery-worker/build/libs/delivery-worker-0.0.1-SNAPSHOT.jar
-SPRING_PROFILES_ACTIVE=local java -jar event-consumer/build/libs/event-consumer-0.0.1-SNAPSHOT.jar
+SPRING_PROFILES_ACTIVE=local java -jar api/build/libs/api-0.0.1-SNAPSHOT.jar
+SPRING_PROFILES_ACTIVE=local java -jar worker/build/libs/worker-0.0.1-SNAPSHOT.jar
+SPRING_PROFILES_ACTIVE=local java -jar consumer/build/libs/consumer-0.0.1-SNAPSHOT.jar
 
 # 5. Publicación de un evento
 ./scripts/publish-event.sh EVT-DEMO-1 CLIENT001 credit_transfer "Transferencia por 1.500.000"

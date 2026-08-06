@@ -57,9 +57,9 @@ flowchart TB
     bus[("Bus de eventos<br/>de la plataforma")]
 
     subgraph service["Notification Delivery Service"]
-        consumer["<b>event-consumer</b><br/>consume el bus y encola"]
-        worker["<b>delivery-worker</b><br/>entrega y reintenta"]
-        api["<b>monitoring-api</b><br/>GET · GET/id · POST replay"]
+        consumer["<b>consumer</b><br/>consume el bus y encola"]
+        worker["<b>worker</b><br/>entrega y reintenta"]
+        api["<b>api</b><br/>GET · GET/id · POST replay"]
     end
 
     subgraph queues["Cola de trabajo"]
@@ -183,10 +183,10 @@ no se previene con una comprobación, sino impidiendo que el caso inseguro sea e
 ```mermaid
 sequenceDiagram
     participant K as Bus de eventos
-    participant CON as event-consumer
+    participant CON as consumer
     participant DB as Base de datos
     participant Q as Cola de entrega
-    participant W as delivery-worker
+    participant W as worker
     participant S as Suscripciones
     participant H as Webhook cliente
 
@@ -396,9 +396,9 @@ flowchart TB
             nat["NAT Gateway<br/>Elastic IPs fijas"]
         end
         subgraph priv["Subredes privadas"]
-            api["ECS Fargate · monitoring-api<br/>autoescala por RPS/CPU"]
-            worker["ECS Fargate · delivery-worker<br/>autoescala por profundidad de cola"]
-            consumer["ECS Fargate · event-consumer<br/>autoescala por lag del consumer group"]
+            api["ECS Fargate · api<br/>autoescala por RPS/CPU"]
+            worker["ECS Fargate · worker<br/>autoescala por profundidad de cola"]
+            consumer["ECS Fargate · consumer<br/>autoescala por lag del consumer group"]
             aurora[("Aurora PostgreSQL<br/>escritor + réplica de lectura")]
             os[("OpenSearch Service")]
         end
@@ -475,11 +475,11 @@ rompería integraciones.
 
 | Dimensión | Mecanismo | Señal de autoescalado | En AWS |
 |---|---|---|---|
-| API self-service | Réplicas de `monitoring-api` sin estado tras un balanceador | RPS por réplica / CPU | ECS Fargate + ALB |
-| Worker de entrega | Réplicas de `delivery-worker` en competencia sobre la cola | Profundidad de la cola | `ApproximateNumberOfMessagesVisible` |
+| API self-service | Réplicas de `api` sin estado tras un balanceador | RPS por réplica / CPU | ECS Fargate + ALB |
+| Worker de entrega | Réplicas de `worker` en competencia sobre la cola | Profundidad de la cola | `ApproximateNumberOfMessagesVisible` |
 | Lecturas de la API | Réplica de lectura | Latencia de consulta | Aurora read replica |
 | Escrituras | Nodo escritor; particionar por `client_id` si procede | — | Aurora writer |
-| Ingesta desde el bus | Réplicas de `event-consumer` hasta el paralelismo del bus | Retraso del consumidor | Lag del consumer group |
+| Ingesta desde el bus | Réplicas de `consumer` hasta el paralelismo del bus | Retraso del consumidor | Lag del consumer group |
 
 El cuello de botella no reside en el servicio sino en el webhook del cliente. Por eso la
 métrica que gobierna el autoescalado del worker es la profundidad de cola y no la CPU: el
