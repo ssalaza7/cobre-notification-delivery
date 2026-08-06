@@ -17,6 +17,7 @@ import reactor.rabbitmq.SenderOptions;
  * aplicar backpressure a uno sin bloquear al otro.
  */
 @Configuration
+@MessagingProvider(MessagingProvider.RABBIT)
 public class RabbitMQConfig {
 
     @Bean

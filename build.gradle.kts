@@ -24,12 +24,20 @@ repositories {
 val springBootVersion = "4.0.7"
 val reactorRabbitVersion = "1.5.6"
 val amqpClientVersion = "5.14.2"
+val awsSdkVersion = "2.31.78"
+val reactorKafkaVersion = "1.3.23"
+val kafkaClientsVersion = "3.9.1"
 
 configurations.all {
     // Spring Boot 4 sube amqp-client a 5.27.x, incompatible con reactor-rabbitmq 1.5.6
     // (NoSuchMethodError en ConnectionFactory.useNio). Se fija la ultima version que
     // funciona con esa combinacion.
     resolutionStrategy.force("com.rabbitmq:amqp-client:$amqpClientVersion")
+
+    // Mismo caso con Kafka: Boot 4 sube kafka-clients a 4.x, que elimino constructores
+    // contra los que reactor-kafka 1.3.23 esta compilado (NoSuchMethodError en
+    // ConsumerRecord). Se fija la ultima 3.x, que es con la que esa version funciona.
+    resolutionStrategy.force("org.apache.kafka:kafka-clients:$kafkaClientsVersion")
 }
 
 dependencies {
@@ -59,8 +67,15 @@ dependencies {
     implementation("org.flywaydb:flyway-database-postgresql")
     runtimeOnly("org.postgresql:postgresql")
 
-    // Adaptador de salida de mensajeria (reintentos con retardo + DLQ)
+    // Mensajeria. El proveedor se elige con cobre.messaging.provider:
+    //   rabbit -> un solo broker haciendo de bus de eventos y de cola de trabajo
+    //   aws    -> Kafka como bus de eventos y SQS como cola de trabajo
+    // Ambos implementan los mismos puertos; el dominio no sabe cual esta activo.
     implementation("io.projectreactor.rabbitmq:reactor-rabbitmq:$reactorRabbitVersion")
+    implementation("io.projectreactor.kafka:reactor-kafka:$reactorKafkaVersion")
+    implementation(platform("software.amazon.awssdk:bom:$awsSdkVersion"))
+    implementation("software.amazon.awssdk:sqs")
+    implementation("software.amazon.awssdk:netty-nio-client")
 
     // Observabilidad. Los dos registries conviven: el codigo publica una sola vez a
     // traves de MetricsPort y Micrometer se encarga de alimentar a quien este activo.

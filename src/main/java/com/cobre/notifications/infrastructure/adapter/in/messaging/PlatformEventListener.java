@@ -1,5 +1,6 @@
 package com.cobre.notifications.infrastructure.adapter.in.messaging;
 
+import com.cobre.notifications.infrastructure.config.MessagingProvider;
 import com.cobre.notifications.application.port.in.IngestNotificationEventUseCase;
 import com.cobre.notifications.infrastructure.config.ConditionalOnRole;
 import com.cobre.notifications.infrastructure.config.MessagingProperties;
@@ -21,6 +22,7 @@ import tools.jackson.databind.ObjectMapper;
  * cambia esta clase y nada mas.
  */
 @Component
+@MessagingProvider(MessagingProvider.RABBIT)
 @ConditionalOnRole(ConditionalOnRole.WORKER)
 public class PlatformEventListener extends AbstractAmqpListener {
 

@@ -51,6 +51,8 @@ import java.util.random.RandomGenerator;
         RetryProperties.class,
         MessagingProperties.class,
         RabbitConnectionProperties.class,
+        KafkaProperties.class,
+        SqsProperties.class,
         SecurityProperties.class
 })
 public class AppConfig {

@@ -1,5 +1,6 @@
 package com.cobre.notifications.infrastructure.adapter.out.messaging;
 
+import com.cobre.notifications.infrastructure.config.MessagingProvider;
 import com.cobre.notifications.infrastructure.config.MessagingProperties;
 import com.cobre.notifications.infrastructure.config.RetryProperties;
 import org.slf4j.Logger;
@@ -33,6 +34,7 @@ import java.util.Map;
  * aceptar trafico que no va a poder procesar.
  */
 @Component
+@MessagingProvider(MessagingProvider.RABBIT)
 public class RabbitTopologyInitializer implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(RabbitTopologyInitializer.class);

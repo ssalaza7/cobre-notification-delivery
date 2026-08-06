@@ -1,5 +1,6 @@
 package com.cobre.notifications.infrastructure.adapter.out.messaging;
 
+import com.cobre.notifications.infrastructure.config.MessagingProvider;
 import com.cobre.notifications.application.port.out.DeliveryQueuePort;
 import com.cobre.notifications.infrastructure.config.MessagingProperties;
 import com.cobre.notifications.infrastructure.config.RetryProperties;
@@ -26,6 +27,7 @@ import java.util.Map;
  * garantia at-least-once.
  */
 @Component
+@MessagingProvider(MessagingProvider.RABBIT)
 public class RabbitDeliveryQueueAdapter implements DeliveryQueuePort {
 
     private static final Logger log = LoggerFactory.getLogger(RabbitDeliveryQueueAdapter.class);

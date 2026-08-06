@@ -33,6 +33,49 @@ services:
       timeout: 5s
       retries: 10
 
+  # --- Emuladores de la arquitectura objetivo -----------------------------------
+  # Se levantan con:  docker compose --profile aws up -d
+  #
+  # Hablan los mismos protocolos que Kafka y SQS, asi que el codigo es identico al que
+  # correria en AWS: solo cambia la direccion a la que apunta. Permiten demostrar la
+  # arquitectura objetivo sin cuenta de AWS ni costo alguno.
+
+  # Kafka local. Redpanda habla el protocolo de Kafka pero arranca en segundos y en un
+  # solo contenedor, sin las piezas que exige un Kafka completo.
+  redpanda:
+    image: redpandadata/redpanda:v24.2.11
+    container_name: cobre-notifications-redpanda
+    profiles: ["aws"]
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp=1
+      - --memory=512M
+      - --reserve-memory=0M
+      - --node-id=0
+      - --check=false
+      - --kafka-addr=PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092
+      - --advertise-kafka-addr=PLAINTEXT://redpanda:29092,OUTSIDE://localhost:9092
+    ports:
+      - "${KAFKA_PORT:-9092}:9092"
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # SQS local. ElasticMQ expone la misma API que SQS; las colas se declaran en su
+  # archivo de configuracion, incluida la redrive policy que alimenta la cola muerta.
+  elasticmq:
+    image: softwaremill/elasticmq-native:1.6.11
+    container_name: cobre-notifications-elasticmq
+    profiles: ["aws"]
+    ports:
+      - "${SQS_PORT:-9324}:9324"
+    volumes:
+      - ./observability/elasticmq.conf:/opt/elasticmq.conf:ro
+
   # --- Stack de observabilidad local -------------------------------------------
   # No arranca por defecto. Se levanta aparte porque Elasticsearch pide bastante
   # memoria y no hace falta para desarrollar ni para correr las pruebas:

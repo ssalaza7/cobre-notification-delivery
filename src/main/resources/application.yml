@@ -32,6 +32,13 @@ cobre:
     password: ${RABBITMQ_PASSWORD:guest}
 
   messaging:
+    # Que tecnologia de mensajeria se activa:
+    #   rabbit -> un solo broker haciendo de bus de eventos y de cola de trabajo
+    #   aws    -> Kafka como bus y SQS como cola de trabajo (la arquitectura objetivo)
+    # Los dos implementan los mismos puertos; el dominio no sabe cual esta activo.
+    provider: ${COBRE_MESSAGING_PROVIDER:rabbit}
+
+    # --- Solo aplican con provider=rabbit ---
     # Bus de eventos de la plataforma (lo publica otro equipo; aqui solo se consume).
     platform-exchange: cobre.platform.events
     inbound-queue: cobre.notifications.inbound
@@ -43,6 +50,25 @@ cobre:
     dlq: cobre.notifications.dlq
     dlq-routing-key: dead
     prefetch: 64
+
+  # --- Solo aplican con provider=aws ---
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+    topic: ${KAFKA_TOPIC:cobre.platform.events}
+    # Un solo grupo para todas las replicas del worker: se reparten las particiones en
+    # vez de procesar cada una el mismo evento.
+    group-id: ${KAFKA_GROUP:notification-delivery-service}
+
+  sqs:
+    region: ${AWS_REGION:us-east-1}
+    # Vacio en AWS, donde vale el endpoint real del servicio. Se define solo para
+    # apuntar a un emulador local.
+    endpoint: ${SQS_ENDPOINT:}
+    delivery-queue-url: ${SQS_DELIVERY_QUEUE:http://localhost:9324/000000000000/notifications-delivery}
+    dead-letter-queue-url: ${SQS_DLQ:http://localhost:9324/000000000000/notifications-dlq}
+    max-messages: 10
+    wait-time: 20s
+    visibility-timeout: 60s
 
   webhook:
     # Rechaza destinos que no sean HTTPS y direcciones internas (mitigacion SSRF).
