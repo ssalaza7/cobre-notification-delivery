@@ -88,13 +88,13 @@
                   "// Identificador unico por ejecucion, para poder correr la demo varias veces.",
                   "const id = 'EVT-DEMO-' + Date.now();",
                   "pm.collectionVariables.set('ok_event_id', id);",
-                  "pm.collectionVariables.set('evento_payload', JSON.stringify({",
+                  "pm.collectionVariables.set('evento_payload', JSON.stringify(JSON.stringify({",
                   "    event_id: id,",
                   "    client_id: pm.collectionVariables.get('client_id'),",
                   "    event_type: 'credit_transfer',",
                   "    content: 'Transferencia recibida por $1.500.000',",
                   "    created_at: new Date().toISOString()",
-                  "}));"
+                  "})));"
                 ]
               }
             }
@@ -159,13 +159,13 @@
                   "// poder mostrar el backoff de verdad.",
                   "const id = 'EVT-FALLA-' + Date.now();",
                   "pm.collectionVariables.set('retry_event_id', id);",
-                  "pm.collectionVariables.set('evento_payload', JSON.stringify({",
+                  "pm.collectionVariables.set('evento_payload', JSON.stringify(JSON.stringify({",
                   "    event_id: id,",
                   "    client_id: pm.collectionVariables.get('client_id'),",
                   "    event_type: 'credit_card_payment',",
                   "    content: 'Pago con tarjeta por $150.00',",
                   "    created_at: new Date().toISOString()",
-                  "}));"
+                  "})));"
                 ]
               }
             }
