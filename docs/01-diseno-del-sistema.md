@@ -1,34 +1,24 @@
 # Task 1 — Diseño del sistema
 
-Entrega de notificaciones de eventos por webhook, más una API self-service para que
-el cliente consulte y reenvíe sus notificaciones.
+Entrega de notificaciones de eventos por webhook, con una API self-service de consulta y
+reenvío.
 
-> **Cómo leer este documento.** El enunciado pide diseñar la solución garantizando
-> escalabilidad y resiliencia; no fija nube, broker ni base de datos. Por eso el diseño
-> está expresado en dos niveles separados a propósito:
->
-> - **Secciones 1 a 8 — el diseño.** Estructura, garantías, máquina de estados y
->   propiedades que se le exigen a la infraestructura. Es independiente de productos y
->   es donde vive la respuesta a escalabilidad y resiliencia.
-> - **Sección 9 — una materialización.** Un despliegue concreto en AWS, con los supuestos
->   que lo sustentan declarados y su origen citado.
->
-> La sección 8 es la bisagra: dice qué necesita el diseño de su sustrato y cómo se cumple
-> con distintas tecnologías. Si el broker o la nube resultan ser otros, cambia esa tabla
-> y algún adaptador; no cambia el diseño.
+El enunciado pide garantizar escalabilidad y resiliencia sin fijar nube, broker ni base de
+datos. El documento se organiza en consecuencia: las **secciones 1 a 8** contienen el diseño
+—estructura, garantías y propiedades exigidas a la infraestructura— con independencia de
+productos concretos; la **sección 9** presenta una materialización en AWS. La sección 8 es la
+bisagra entre ambas.
 
 ---
 
-## 1. El problema, en una frase
+## 1. Alcance
 
-Cada evento que genera la plataforma (un pago recibido, un saldo actualizado) debe
-llegar al webhook del cliente **al que ese evento pertenece**, sin perderse cuando el
-destino falla, y dejando rastro suficiente para responder una queja con datos.
+Cada evento que genera la plataforma debe llegar al webhook del cliente al que pertenece, sin
+perderse cuando el destino falla, y dejando registro suficiente para responder una reclamación
+con datos.
 
-Son dos capacidades sobre un mismo modelo:
-
-1. **Entrega**: consumir, confirmar suscripción, entregar, reintentar, registrar.
-2. **Self-service**: consultar, ver detalle, reenviar.
+Son dos capacidades sobre un mismo modelo: **entrega** (consumir, verificar suscripción,
+entregar, reintentar, registrar) y **self-service** (consultar, ver detalle, reenviar).
 
 ---
 
@@ -53,9 +43,9 @@ flowchart TB
     style svc fill:#1f6feb,color:#fff
 ```
 
-**Frontera deliberada:** este servicio no sabe qué significa un `credit_transfer` ni
-valida reglas de negocio del evento. Su responsabilidad empieza cuando el evento ya
-ocurrió y termina cuando la entrega quedó cerrada y registrada.
+El servicio no interpreta el significado de un `credit_transfer` ni valida reglas de negocio
+del evento. Su responsabilidad comienza cuando el evento ya ocurrió y termina cuando la
+entrega queda cerrada y registrada.
 
 ---
 
@@ -64,7 +54,6 @@ ocurrió y termina cuando la entrega quedó cerrada y registrada.
 ```mermaid
 flowchart TB
     platform["Microservicios<br/>de la plataforma"]
-
     bus[("Bus de eventos<br/>de la plataforma")]
 
     subgraph service["Notification Delivery Service · un microservicio"]
@@ -73,8 +62,7 @@ flowchart TB
     end
 
     subgraph queues["Cola de trabajo"]
-        dq[("Cola de entrega")]
-        rq[("Colas de retardo<br/>5s · 30s · 2m · 10m · 30m")]
+        dq[("Cola de entrega<br/>retardo por mensaje")]
         dlq[("DLQ")]
     end
 
@@ -84,8 +72,6 @@ flowchart TB
 
     platform --> bus --> worker
     worker <--> dq
-    worker -- "fallo transitorio" --> rq
-    rq -- "al expirar el TTL" --> dq
     worker -- "reintentos agotados" --> dlq
     worker -- "POST firmado" --> hook
     worker --> db
@@ -99,38 +85,33 @@ flowchart TB
 
 ### Un microservicio, dos roles de ejecución
 
-**La API y el worker son el mismo artefacto desplegado dos veces**: mismo contenedor,
-distintos adaptadores activos. Conviene separar dos preguntas que suelen mezclarse.
+La API y el worker son el mismo artefacto desplegado dos veces: mismo contenedor, distintos
+adaptadores activos.
 
-**¿Despliegues separados? Sí.** Sus perfiles de carga no tienen nada que ver: la API
-responde a personas y paneles (tráfico diurno, ráfagas pequeñas), mientras que el
-worker sigue el ritmo de la plataforma y puede tener que drenar millones de eventos a
-las 3 de la mañana. Escalarlos juntos significa pagar worker de más o quedarse corto de
-API. Y si la API se satura, el cliente no puede consultar; si se satura el worker, **las
-notificaciones no se entregan**. Son fallos de gravedad distinta y merecen aislamiento.
-Además el worker no necesita exponerse a internet en absoluto.
+**Despliegues separados, sí.** Los perfiles de carga son independientes: la API responde a
+personas y paneles, mientras que el worker sigue el ritmo de la plataforma y puede tener que
+drenar millones de eventos en cualquier momento. Escalarlos en conjunto implica sobredimensionar
+uno de los dos. Además, la saturación de cada uno tiene consecuencias distintas —consultas
+degradadas frente a notificaciones sin entregar— y el worker no necesita exposición a internet.
 
-**¿Microservicios separados? No.** Ambos operan sobre las mismas tablas y comparten la
-misma máquina de estados. Dos servicios contra una misma base de datos es un monolito
-distribuido: paga el costo de la red sin obtener el aislamiento. Y el límite de un
-microservicio se traza por capacidad de negocio, no por capa técnica — "API" y "worker"
-son capas. El *bounded context* aquí es uno: la entrega de notificaciones.
+**Microservicios separados, no.** Ambos operan sobre las mismas tablas y comparten la máquina
+de estados. Dos servicios contra una misma base de datos constituyen un monolito distribuido:
+asumen el costo de la red sin obtener aislamiento. El límite de un microservicio se traza por
+capacidad de negocio, y aquí el *bounded context* es uno solo.
 
-*Cuándo cambiaría:* si la entrega llegara a tener otro equipo dueño y otro SLA. Pero
-entonces el corte correcto no sería API contra worker, sino que el servicio de entrega
-fuera dueño de los datos y la API self-service pasara a ser un modelo de lectura
-(CQRS), con el reenvío convertido en un comando publicado. Es una decisión que se toma
-cuando duele, no antes.
+La separación tendría sentido si la entrega pasara a tener otro equipo responsable y otro SLA.
+En ese caso el corte correcto no sería API contra worker, sino que el servicio de entrega
+fuera dueño de los datos y la API self-service pasara a ser un modelo de lectura (CQRS).
 
 ---
 
-## 4. Componentes: arquitectura hexagonal (C4 nivel 3)
+## 4. Componentes (C4 nivel 3)
 
 ```mermaid
 flowchart LR
     subgraph in["Adaptadores de entrada"]
         rest["NotificationEventController"]
-        amqp["PlatformEventListener<br/>DeliveryCommandListener"]
+        msg["KafkaPlatformEventListener<br/>SqsDeliveryCommandListener"]
     end
 
     subgraph app["Aplicación · puertos y casos de uso"]
@@ -160,19 +141,15 @@ flowchart LR
     style app fill:#1f6feb,color:#fff
 ```
 
-Las dependencias apuntan **siempre hacia adentro**. `domain` y `application` no
-importan una sola clase de Spring; el cableado vive completo en
-`infrastructure/config/AppConfig`. Consecuencia práctica y verificable: las 141
-pruebas del dominio y los casos de uso corren sin levantar contexto de Spring, sin
-base de datos y sin broker, en menos de dos segundos.
+Las dependencias apuntan siempre hacia el interior. `domain` y `application` no importan
+ninguna clase de Spring; el cableado reside en `infrastructure/config/AppConfig`. La
+consecuencia verificable es que las pruebas del dominio y los casos de uso se ejecutan sin
+contexto de Spring, sin base de datos y sin broker.
 
-### Regla que sostiene el aislamiento entre clientes
-
-`EventQuery` **exige** `clientId` en su constructor. No es validación defensiva: es
-que no existe forma de construir una consulta sin acotar por tenant. El `clientId`
-sale siempre del token, nunca de la ruta ni del query string. La falla de
-autorización a nivel de objeto (OWASP A01) no se previene con un `if`, se previene
-haciendo que el caso inseguro no se pueda expresar.
+**Regla que sostiene el aislamiento entre clientes:** `EventQuery` exige `clientId` en su
+constructor, de modo que no existe forma de construir una consulta sin acotar por tenant. El
+`clientId` procede siempre del token. La falla de autorización a nivel de objeto (OWASP A01)
+no se previene con una comprobación, sino impidiendo que el caso inseguro sea expresable.
 
 ---
 
@@ -185,18 +162,18 @@ sequenceDiagram
     participant DB as Base de datos
     participant S as Suscripciones
     participant H as Webhook cliente
-    participant Q as Colas de retardo
+    participant Q as Cola de entrega
 
     K->>W: evento de plataforma
     W->>DB: INSERT ... ON CONFLICT DO NOTHING
     Note over W,DB: event_id es PK:<br/>la reentrega no duplica
     W->>Q: encolar entrega
-    W-->>K: ack
+    W-->>K: confirma el offset
 
     Q->>W: orden de entrega
     W->>DB: leer estado autoritativo
     alt ya está en estado terminal
-        W-->>Q: ack, no hacer nada
+        W-->>Q: confirma, sin acción
     else
         W->>S: ¿suscripción activa para este cliente y tipo?
         alt sin suscripción
@@ -216,38 +193,27 @@ sequenceDiagram
     end
 ```
 
-### Las cuatro decisiones que importan aquí
+**El mensaje transporta solo el identificador; el estado reside en la base.** Un mensaje puede
+permanecer minutos en espera. Si transportara el estado, al procesarlo podría revertir un
+cambio más reciente.
 
-**1. El mensaje lleva solo el identificador; el estado vive en la base.**
-Un mensaje puede pasar 30 minutos esperando en una cola de retardo. Si llevara el
-estado dentro, al procesarlo podría revertir algo más nuevo. Al releer, eso es
-imposible.
+**Se reintenta únicamente lo que puede mejorar.** 5xx, 408, 429, timeouts y errores de conexión
+se reintentan; un 400 o un 404 no, porque el problema está en el payload o en la ruta. Las
+redirecciones no se siguen: un 302 podría reapuntar la petición a la red interna y eludir la
+validación anti-SSRF.
 
-**2. Reintentar lo que puede mejorar y solo eso.**
-5xx, 408, 429, timeouts y errores de conexión se reintentan. Un 400 o un 404 no: el
-payload o la ruta están mal y quien insiste solo gasta capacidad y ensucia las
-métricas del destino. Las redirecciones tampoco se siguen — un 302 podría reapuntar
-la petición a la red interna y evadir la validación anti-SSRF.
+**El retardo lo aplica el broker, no el proceso.** Una espera en memoria se pierde con el
+reinicio o el reescalado; en la cola sobrevive al despliegue. Con SQS se implementa con
+`DelaySeconds` en el propio mensaje.
 
-**3. El retardo lo hace el broker, no el proceso.**
-Un `delayElement` en memoria se pierde con el reinicio o el reescalado; en la cola
-sobrevive al despliegue. Con SQS es `DelaySeconds` en el propio mensaje: la cola lo
-retiene y no lo entrega hasta que toca, sin colas intermedias ni reglas de devolución.
+**El tope de `DelaySeconds` acota el backoff a 15 minutos.** Es una restricción de la
+plataforma y determina cuánto puede esperar el sistema a que un destino se recupere antes de
+darlo por fallido y dejarlo disponible para reenvío manual.
 
-**4. El tope de 15 minutos de SQS acota el backoff.**
-`DelaySeconds` no admite más, así que ningún escalón puede superarlo. Es una restricción
-real de la plataforma y define cuánto puede esperar el sistema a que un destino se
-recupere solo antes de darse por vencido y dejarlo para reenvío manual.
-
-### Por qué hay jitter
-
-Si el webhook de un cliente se cae un minuto, **todas** sus notificaciones fallan a la
-vez. Sin jitter, reintentarían todas en el mismo instante, tumbándolo de nuevo justo
-cuando se estaba recuperando. El jitter del 20% las dispersa.
-
-La invariante que lo hace seguro: cada escalón es más del doble que el anterior, así
-que una espera con jitter nunca alcanza el escalón siguiente y el adaptador puede
-deducir la cola destino a partir del valor ya jitterado.
+**Jitter.** Cuando el webhook de un cliente se cae, todas sus notificaciones fallan
+simultáneamente y sin jitter reintentarían en el mismo instante. El jitter del 20 % las
+dispersa. La invariante que lo hace seguro es que cada escalón supera el doble del anterior,
+de modo que una espera con jitter nunca alcanza el escalón siguiente.
 
 ---
 
@@ -275,13 +241,12 @@ sequenceDiagram
     end
 ```
 
-**Responde 202 y no 200.** El reenvío queda encolado, no entregado. Si la API
-entregara en línea, la petición del cliente quedaría atada al tiempo de respuesta de
-su propio webhook y perdería toda la resiliencia del flujo normal: reintentos, DLQ,
-bitácora.
+La respuesta es 202 y no 200 porque el reenvío queda encolado. Si la API entregara en línea,
+la petición quedaría atada al tiempo de respuesta del webhook del cliente y perdería los
+reintentos, la DLQ y la bitácora.
 
-**Solo se reenvía lo que está en `failed`.** Reenviar algo entregado duplicaría la
-notificación; reenviar algo en curso competiría con el reintento ya programado.
+Solo se reenvía lo que está en `failed`: reenviar algo entregado duplicaría la notificación, y
+reenviar algo en curso competiría con el reintento ya programado.
 
 ---
 
@@ -324,95 +289,71 @@ erDiagram
     }
 ```
 
-- **`event_id` como clave primaria** hace la ingesta idempotente sin lógica extra: un
-  `ON CONFLICT DO NOTHING` resuelve la reentrega del broker.
-- **`delivery_attempt` es append-only.** Nunca se actualiza ni se borra. Es lo que
-  permite responder "mi webhook nunca recibió X" con datos y no con suposiciones.
-- **Índices `(client_id, created_at DESC)` y `(client_id, delivery_status, created_at DESC)`**
-  con `client_id` primero, porque toda consulta está acotada al tenant.
-- **El par `(attempts, replay_count)` es la versión optimista.** Si dos consumidores
-  procesan el mismo evento a la vez — normal cuando el broker reentrega — solo uno
-  escribe; el otro descubre que su versión quedó obsoleta en vez de sobrescribir.
+- **`event_id` como clave primaria** hace idempotente la ingesta: un `ON CONFLICT DO NOTHING`
+  resuelve la reentrega del broker.
+- **`delivery_attempt` es de solo adición.** Nunca se actualiza ni se borra, lo que permite
+  responder con datos a una reclamación sobre entregas no recibidas.
+- **Índices `(client_id, created_at DESC)` y `(client_id, delivery_status, created_at DESC)`**,
+  con `client_id` en primera posición porque toda consulta está acotada al tenant.
+- **El par `(attempts, replay_count)` actúa como versión optimista.** Si dos consumidores
+  procesan el mismo evento simultáneamente, solo uno escribe; el otro detecta que su versión
+  quedó obsoleta.
 
-### Supuesto documentado
-
-El archivo `notification_events.json` no trae fecha de creación, solo `delivery_date`.
-Como la API debe filtrar por *event creation date*, se modela `created_at` como el
-instante en que la plataforma generó el evento y se siembra 2 segundos antes de la
-entrega — el orden de magnitud real entre generación y entrega en un flujo asíncrono
-sano.
+**Supuesto documentado.** El archivo `notification_events.json` no incluye fecha de creación,
+solo `delivery_date`. Como la API debe filtrar por fecha de creación del evento, se modela
+`created_at` como el instante de generación y se siembra dos segundos antes de la entrega.
 
 ---
 
-## 8. Qué le exige este diseño a la infraestructura
+## 8. Propiedades exigidas a la infraestructura
 
-Antes de elegir productos conviene fijar **qué propiedades** hacen falta. Esta es la
-lista completa; cualquier sustrato que las cumpla sirve.
-
-| # | Propiedad exigida | Por qué el diseño la necesita |
+| # | Propiedad | Por qué el diseño la necesita |
 |---|---|---|
-| 1 | **Entrega al menos una vez, con confirmación explícita tras procesar** | Si el proceso muere a mitad de una entrega, el mensaje debe reentregarse. Confirmar al recibir perdería notificaciones |
-| 2 | **Reintento con retardo programado fuera del proceso** | Un `sleep` o un `delayElement` en memoria se pierde con el reinicio o el reescalado |
-| 3 | **Destino terminal inspeccionable para lo no entregable (DLQ)** | Un mensaje envenenado reencolado es un bucle infinito que consume toda la capacidad |
-| 4 | **Consumidores en competencia, sin orden garantizado** | Es lo que impide que el webhook lento de un cliente bloquee a los demás |
-| 5 | **Durabilidad de los mensajes ante reinicio del broker** | Un evento de pago no puede vivir solo en memoria |
-| 6 | **Almacén transaccional con escritura condicional** | La máquina de estados usa bloqueo optimista sobre `(attempts, replay_count)` |
-| 7 | **Unicidad por clave natural** | `event_id` como clave primaria es lo que hace idempotente la ingesta |
+| 1 | Entrega al menos una vez, con confirmación tras procesar | Si el proceso termina a mitad de una entrega, el mensaje debe reentregarse |
+| 2 | Reintento con retardo programado fuera del proceso | Una espera en memoria se pierde con el reinicio o el reescalado |
+| 3 | Destino terminal inspeccionable (DLQ) | Un mensaje envenenado reencolado consume toda la capacidad |
+| 4 | Consumidores en competencia, sin orden garantizado | Impide que el webhook lento de un cliente bloquee a los demás |
+| 5 | Durabilidad ante reinicio del broker | Un evento de pago no puede residir solo en memoria |
+| 6 | Almacén transaccional con escritura condicional | La máquina de estados usa bloqueo optimista |
+| 7 | Unicidad por clave natural | `event_id` como clave primaria hace idempotente la ingesta |
 
-### Una no-exigencia deliberada: orden global
+**No se exige orden global**, y es una decisión deliberada. Exigirlo obligaría a serializar por
+partición o por cola, con lo que un cliente con el webhook caído bloquearía a todos los que
+compartieran esa partición. La ausencia de orden es lo que permite el aislamiento entre
+clientes.
 
-El diseño **no pide** orden en la entrega, y eso es una decisión, no un descuido.
-Exigirlo obligaría a serializar por partición o por cola, y entonces un solo cliente
-con el webhook caído bloquearía a todos los que compartan esa partición. La ausencia
-de orden es justamente lo que permite el aislamiento entre clientes.
+El orden que sí importa —los intentos de una misma notificación— está garantizado por otra vía:
+solo hay un mensaje en vuelo por evento, y el bloqueo optimista rechaza cualquier escritura
+basada en una versión obsoleta.
 
-El orden que sí importa —los intentos de una misma notificación— está garantizado por
-otra vía: solo hay un mensaje en vuelo por evento a la vez, y el bloqueo optimista
-rechaza cualquier escritura basada en una versión obsoleta.
-
-### Cómo se cumplen con distintas tecnologías
+### Cumplimiento según la tecnología
 
 | Propiedad | RabbitMQ | SQS | Kafka | Amazon MQ |
 |---|---|---|---|---|
-| 1 · At-least-once con ack | `consumeManualAck` | Visibility timeout | Commit de offset | Igual que RabbitMQ |
+| 1 · At-least-once | `consumeManualAck` | Visibility timeout | Commit de offset | Igual que RabbitMQ |
 | 2 · Retardo | Cola por escalón con TTL + DLX | `DelaySeconds` nativo | **No lo tiene**: topic por escalón y código propio | Igual que RabbitMQ |
 | 3 · DLQ | DLX + cola muerta | Redrive policy | Topic muerto manual | Igual que RabbitMQ |
-| 4 · Sin orden, en competencia | Sí | Sí (cola estándar) | **No**: orden por partición → bloqueo de cabeza | Sí |
+| 4 · Sin orden, en competencia | Sí | Sí (cola estándar) | **No**: orden por partición, con bloqueo de cabeza | Sí |
 | 5 · Durabilidad | Mensajes persistentes | Nativa | Nativa | Nativa |
 
-**La conclusión sale de la tabla, no de una preferencia.** Kafka falla en las
-propiedades 2 y 4, que son exactamente las que sostienen los reintentos y el
-aislamiento entre clientes. Es un excelente bus de eventos de negocio y una mala cola
-de trabajo. Por eso, si el bus de la plataforma es Kafka, lo correcto es **consumir de
-él y traspasar a una cola de trabajo** para la entrega — no forzar a Kafka a hacer de
-las dos cosas.
+Kafka no cumple las propiedades 2 y 4, que son las que sostienen los reintentos y el
+aislamiento entre clientes. Es un bus de eventos adecuado y una cola de trabajo inadecuada. De
+ahí la estructura adoptada: **consumir del bus y traspasar a una cola de trabajo** para la
+entrega, en lugar de forzar a un solo producto a cubrir ambos papeles.
 
-Ese razonamiento vale igual si el bus resulta ser RabbitMQ, Pub/Sub o SNS: cambia qué
-adaptador de entrada se escribe, no la estructura.
+El razonamiento se mantiene si el bus resulta ser RabbitMQ, Pub/Sub o SNS: cambia el adaptador
+de entrada, no la estructura.
 
-### Qué ya está implementado y qué no
-
-| Propiedad | En este repo |
-|---|---|
-| 1, 2, 3, 4, 5 | Implementadas sobre **Kafka + SQS**, verificadas en ejecución |
-| 6, 7 | Implementadas sobre PostgreSQL, verificadas en ejecución |
-
-El código implementa la arquitectura objetivo, no una aproximación: en local se apunta a
-Redpanda y ElasticMQ, que hablan los mismos protocolos. Pasar a Confluent Cloud y AWS es
-cambiar direcciones, no adaptadores.
-
-La sección siguiente traduce todo esto a una nube concreta.
+**Estado en este repositorio:** las siete propiedades están implementadas sobre Kafka, SQS y
+PostgreSQL, y verificadas en ejecución. En local se apunta a Redpanda y ElasticMQ, que
+implementan los mismos protocolos.
 
 ---
 
-## 9. Una materialización: despliegue en AWS
+## 9. Materialización: despliegue en AWS
 
-> **Supuestos de esta sección.** Se elige AWS como nube objetivo y un bus de eventos
-> tipo Kafka a la entrada. Son decisiones de esta propuesta, no requisitos del enunciado.
->
-> **Nada de las secciones 1 a 8 depende de ellas.** Lo que sigue es una instanciación
-> concreta y defendible; sobre otro proveedor cambian los nombres de los servicios y la
-> tabla de la sección 8, no el diseño.
+> Esta sección asume AWS como nube objetivo y un bus tipo Kafka a la entrada. Son decisiones de
+> la propuesta, no requisitos del enunciado. Nada de las secciones 1 a 8 depende de ellas.
 
 ```mermaid
 flowchart TB
@@ -420,7 +361,7 @@ flowchart TB
 
     subgraph edge["Borde"]
         r53["Route 53"]
-        waf["AWS WAF<br/>rate limit por cliente · reglas gestionadas"]
+        waf["AWS WAF<br/>rate limit · reglas gestionadas"]
         alb["ALB + ACM<br/>TLS 1.2+"]
     end
 
@@ -465,136 +406,99 @@ flowchart TB
     style worker fill:#1f6feb,color:#fff
 ```
 
-### Traducción de la implementación local a AWS
-
-| Local (este repo) | AWS | Qué cambia en el código |
+| Local (este repositorio) | AWS | Cambio en el código |
 |---|---|---|
-| Redpanda (Kafka local) | Confluent Cloud | **Nada**: mismo protocolo, otra dirección |
-| ElasticMQ (SQS local) | SQS | **Nada**: mismo protocolo, otra dirección |
-| PostgreSQL en Docker | Aurora PostgreSQL | Nada: sigue siendo R2DBC |
-| Filebeat + Elasticsearch | FireLens → OpenSearch Service | Nada: la app escribe ECS a stdout |
-| Prometheus | Datadog Agent (OpenMetrics) | Nada: el `MetricsPort` no cambia |
+| Redpanda (Kafka local) | Confluent Cloud | Ninguno: mismo protocolo |
+| ElasticMQ (SQS local) | SQS | Ninguno: mismo protocolo |
+| PostgreSQL en Docker | Aurora PostgreSQL | Ninguno: sigue siendo R2DBC |
+| Filebeat + Elasticsearch | FireLens → OpenSearch Service | Ninguno: la app escribe ECS a stdout |
+| Prometheus | Datadog Agent (OpenMetrics) | Ninguno: el `MetricsPort` no cambia |
 | Secreto HS256 en properties | Secrets Manager + JWKS del IdP | Solo configuración |
 
-**El dominio, los casos de uso y sus pruebas no aparecen en esa columna.** Ese es el
-retorno concreto de la arquitectura hexagonal, y es verificable: basta ver qué
-paquetes importan `org.springframework`, `org.apache.kafka` o `software.amazon.awssdk`.
+El dominio, los casos de uso y sus pruebas no aparecen en esa tabla. Es el retorno concreto de
+la arquitectura hexagonal, verificable comprobando qué paquetes importan `org.springframework`,
+`org.apache.kafka` o `software.amazon.awssdk`.
 
-### Por qué Kafka a la entrada pero SQS a la entrega
+**ECS Fargate.** Bajo PCI DSS v4.0.1, no administrar nodos reduce superficie de cumplimiento:
+menos que parchear, auditar y documentar. Un solo microservicio no justifica operar una
+plataforma Kubernetes propia. El criterio que revertiría la decisión: si la organización ya
+opera EKS con su malla de servicios y pipelines auditados, reutilizar esa plataforma es
+preferible a introducir una segunda, y KEDA escala por profundidad de cola mejor que el
+autoescalado de ECS.
 
-Kafka es el bus correcto para el evento de negocio: es donde la plataforma ya publica
-y da orden por partición y reprocesamiento histórico.
-
-Pero para la **entrega** sería una mala elección, por una razón concreta: en Kafka el
-paralelismo está topado por el número de particiones y el orden se respeta dentro de
-cada una, así que **un webhook lento bloquea a todos los clientes que compartan su
-partición**. Es exactamente el problema que este servicio no puede tener. SQS no
-promete orden, y esa "carencia" es justo lo que permite que un cliente caído no afecte
-a los demás. Además trae de fábrica lo que en Kafka hay que construir: retardo por
-mensaje, DLQ y reintentos.
-
-### Por qué ECS Fargate
-
-Con PCI DSS v4.0.1 encima, no administrar nodos no es comodidad sino **superficie de
-cumplimiento**: menos que parchear, menos que auditar, menos que documentar. Un solo
-microservicio no justifica operar una plataforma Kubernetes propia.
-
-*El criterio que revertiría esta decisión:* si Cobre ya opera EKS con su malla de
-servicios, políticas y pipelines auditados, desplegar aquí sobre EKS es correcto —
-reusar una plataforma existente casi siempre gana sobre introducir una segunda. Y
-KEDA escala por profundidad de cola mejor que el autoescalado de ECS.
-
-### Egreso por NAT con IPs fijas
-
-Los webhooks salen por NAT Gateway con Elastic IPs estáticas. No es un detalle de red:
-los clientes empresariales — bancos, PSPs — necesitan **poner en lista blanca las IPs
-de origen de Cobre** en sus firewalls. Sin IPs estables, cada reescalado rompería
-integraciones.
+**Egreso por NAT con IPs fijas.** Los clientes empresariales —bancos, PSPs— necesitan incluir
+las IPs de origen en la allowlist de sus firewalls. Sin direcciones estables, cada reescalado
+rompería integraciones.
 
 ---
 
 ## 10. Escalabilidad
 
-Los mecanismos son independientes del producto; la última columna es solo cómo se
-instrumentan en la materialización de la sección 9.
-
 | Dimensión | Mecanismo | Señal de autoescalado | En AWS |
 |---|---|---|---|
 | API self-service | Réplicas sin estado tras un balanceador | RPS por réplica / CPU | ECS Fargate + ALB |
 | Worker de entrega | Consumidores en competencia sobre la cola | Profundidad de la cola | `ApproximateNumberOfMessagesVisible` |
-| Lecturas de la API | Réplica de lectura, separada del camino de escritura | Latencia de consulta | Aurora read replica |
-| Escrituras | Nodo escritor; particionar por `client_id` si llega el caso | — | Aurora writer |
-| Ingesta desde el bus | Consumidores hasta el paralelismo que permita el bus | Retraso del consumidor | Lag del consumer group |
+| Lecturas de la API | Réplica de lectura | Latencia de consulta | Aurora read replica |
+| Escrituras | Nodo escritor; particionar por `client_id` si procede | — | Aurora writer |
+| Ingesta desde el bus | Consumidores hasta el paralelismo del bus | Retraso del consumidor | Lag del consumer group |
 
-El cuello de botella no reside en el servicio sino en el webhook del cliente. Por esa
-razón la métrica que gobierna el autoescalado del worker es la profundidad de cola y no
-la CPU: el consumo de CPU permanece plano mientras el servicio espera respuestas de red,
-de modo que un autoescalado basado en CPU no reaccionaría.
+El cuello de botella no reside en el servicio sino en el webhook del cliente. Por eso la
+métrica que gobierna el autoescalado del worker es la profundidad de cola y no la CPU: el
+consumo de CPU permanece plano mientras el servicio espera respuestas de red.
 
-**Vecino ruidoso.** Hoy todos los clientes comparten la cola de entrega. Un cliente con
-un pico de millones de eventos retrasa al resto. La evolución natural es una cola
-dedicada para los clientes de alto volumen; el `client_id` ya viaja en el mensaje
-precisamente para poder enrutar sin cambiar el productor.
+**Vecino ruidoso.** Todos los clientes comparten la cola de entrega, de modo que un cliente con
+un pico de volumen retrasa al resto. La evolución natural es una cola dedicada para clientes de
+alto volumen; el `client_id` ya viaja en el mensaje para poder enrutar sin cambiar el productor.
 
 ---
 
 ## 11. Resiliencia
 
-| Riesgo | Mitigación | Dónde está |
+| Riesgo | Mitigación | Ubicación |
 |---|---|---|
-| Perder un evento | Confirmación manual tras procesar + confirmaciones del broker al publicar | `AbstractAmqpListener`, `RabbitDeliveryQueueAdapter` |
+| Perder un evento | Confirmación del offset tras persistir; borrado del mensaje tras entregar | `KafkaPlatformEventListener`, `AbstractSqsListener` |
 | Duplicar la notificación | `event_id` como PK + guarda de estado terminal | `IngestNotificationEventService`, `DeliverNotificationEventService` |
 | Doble escritura concurrente | Bloqueo optimista `(attempts, replay_count)` | `NotificationEventRepositoryPort.update` |
-| Webhook caído | Backoff exponencial con jitter, 5 intentos | `RetryPolicy` |
+| Webhook caído | Backoff exponencial con jitter | `RetryPolicy` |
 | Fallo definitivo | Estado `failed` + DLQ + endpoint de reenvío | `DeliveryQueuePort.sendToDeadLetter` |
-| Mensaje envenenado | Rechazo sin reencolar → DLQ | `AbstractAmqpListener` |
+| Mensaje corrupto | No se borra de la cola; SQS lo deriva a la DLQ | `AbstractSqsListener` |
 | Destino que no responde | Timeouts de conexión y respuesta | `WebhookProperties` |
-| Broker no disponible al arrancar | Falla rápido en el arranque | `RabbitTopologyInitializer` |
 
-### Garantía real, dicha con precisión
-
-El sistema es **at-least-once**, no exactly-once. Si el webhook responde 200 pero la
-red corta la respuesta antes de que la recibamos, se registrará el intento como fallo
-y se reintentará: el cliente verá la notificación dos veces.
-
-Por eso el `event_id` viaja en el payload — **para que el receptor pueda deduplicar
-con su propia escritura idempotente**. Prometer exactly-once de extremo a extremo
-sería falso, y es mejor documentar la garantía real que dejar que el cliente la
-descubra en producción.
+**La garantía es at-least-once, no exactly-once.** Si el webhook responde 200 pero la red corta
+la respuesta antes de recibirla, el intento se registra como fallo y se reintenta: el cliente
+recibirá la notificación dos veces. Por eso el `event_id` viaja en el payload y en una
+cabecera, para que el receptor deduplique con su propia escritura idempotente. Prometer
+exactly-once de extremo a extremo sería inexacto.
 
 ---
 
 ## 12. Limitaciones conocidas
 
-
-
-1. **Sin circuit breaker por cliente.** Si el webhook de un cliente lleva horas caído,
-   cada evento suyo sigue gastando 5 intentos y capacidad del worker. Un breaker
-   (Resilience4j) por destino cortaría en seco y reabriría con sondeos.
-2. **Rate limit por instancia.** El contador vive en memoria; con tres réplicas el
-   límite efectivo es el triple. Contiene el abuso accidental, no el deliberado. En
-   AWS esto se resuelve en WAF, que además protege antes de que el tráfico llegue al
-   servicio.
-3. **Sin pruebas de integración con infraestructura real.** El gate de cobertura
-   excluye los adaptadores de persistencia. Testcontainers los traería de vuelta.
-4. **Secretos de firma en texto plano en la base.** Deben vivir cifrados con KMS o en
-   Secrets Manager.
-5. **La DLQ no tiene proceso automático.** Hoy se inspecciona a mano; falta una alarma
-   por profundidad y un flujo de reproceso masivo.
-6. **No hay emisor de tokens.** El servicio valida pero no emite, y emitir identidad
-   pertenece a otro contexto. Para la prueba los tokens se firman con un script local;
-   en el despliegue propuesto el emisor es Amazon Cognito y la validación pasa a JWKS.
+1. **Sin circuit breaker por cliente.** Un webhook caído durante horas sigue consumiendo
+   intentos y capacidad del worker en cada evento. Un breaker por destino cortaría el tráfico y
+   reabriría mediante sondeos.
+2. **Rate limit por instancia.** El contador reside en memoria; con tres réplicas el límite
+   efectivo se triplica. En AWS corresponde al WAF, que además actúa antes de que el tráfico
+   llegue al servicio.
+3. **Sin pruebas de integración con infraestructura real.** El umbral de cobertura excluye los
+   adaptadores de persistencia. Testcontainers los incorporaría.
+4. **Secretos de firma en texto plano en la base.** Deben cifrarse con KMS o moverse a Secrets
+   Manager.
+5. **La DLQ no dispone de reproceso automático** ni de alarma por profundidad.
+6. **La emisión de tokens es propia del servicio.** Es autocontenida y suficiente para la
+   prueba, pero en producción corresponde a un proveedor de identidad con validación por JWKS y
+   rotación de claves.
 
 ---
 
 ## 13. Camino a producción
 
-1. **CI**: `./gradlew build` en cada PR — pruebas más gate de cobertura del 90%.
-2. **CD**: imagen a ECR, despliegue azul/verde en ECS con `readinessProbe` sobre
+1. **CI:** `./gradlew build` en cada PR, con pruebas y umbral de cobertura del 90 %.
+2. **CD:** imagen a ECR y despliegue azul/verde en ECS con sonda sobre
    `/actuator/health/readiness`.
-3. **Migraciones**: Flyway corre al arrancar; para cero downtime, cambios de esquema
-   compatibles hacia atrás en dos despliegues (expandir, migrar, contraer).
-4. **Apagado ordenado**: dejar de tomar mensajes, terminar los que están en vuelo,
-   cerrar. Sin esto, cada despliegue genera reentregas evitables.
-5. **Alarmas**: tasa de `failed` sobre el total, profundidad de la DLQ, latencia p99 de
-   los webhooks, lag del grupo de consumo de Kafka.
+3. **Migraciones:** Flyway al arrancar. Para cero downtime, cambios de esquema compatibles hacia
+   atrás en dos despliegues (expandir, migrar, contraer).
+4. **Apagado ordenado:** dejar de tomar mensajes, terminar los que están en vuelo y cerrar. Sin
+   esto, cada despliegue genera reentregas evitables.
+5. **Alarmas:** tasa de `failed` sobre el total, profundidad de la DLQ, latencia p99 de los
+   webhooks y lag del grupo de consumo.

@@ -75,8 +75,8 @@ importan ninguna clase de Spring; el cableado reside en `infrastructure/config`.
 La consecuencia verificable es que las pruebas del dominio y de los casos de uso se ejecutan
 sin contexto de Spring, sin base de datos y sin broker.
 
-El efecto práctico quedó demostrado durante el desarrollo: la sustitución de RabbitMQ por
-Kafka y SQS no requirió modificar el dominio ni los casos de uso, solo los adaptadores.
+Sustituir el sistema de mensajería, la base de datos o el cliente HTTP afecta únicamente a
+los adaptadores correspondientes: ni el dominio ni los casos de uso cambian.
 
 ---
 
@@ -213,9 +213,11 @@ Cada línea incluye `event_id`, `client_id` y `request_id` como campos indexados
 permite reconstruir el ciclo completo con una sola consulta. El campo `content` de la
 notificación no se registra, por tratarse de información financiera del cliente.
 
-### Logs en Kibana
+### Consulta de los logs en Kibana
 
-![Logs en Kibana](docs/img/kibana-logs.png)
+Los logs se indexan en Elasticsearch y se consultan desde Kibana con cinco vistas
+versionadas en el repositorio: todo el tráfico, entregas, llamadas a la API, solo errores y
+traza de un evento. Se cargan con `./scripts/kibana-import.sh`.
 
 ### Métricas en Grafana
 

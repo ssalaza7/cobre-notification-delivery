@@ -1,98 +1,55 @@
 # Task 3 — Seguridad: OWASP Top 10
 
-La API se consume públicamente desde internet. Abajo están las vulnerabilidades del
-OWASP Top 10 que considero de mayor impacto real para **esta** API en concreto, con la
-mitigación implementada y dónde verla en el código.
+Vulnerabilidades del OWASP Top 10 con mayor impacto real sobre esta API, con la mitigación
+implementada y su ubicación en el código. El enunciado pide tres; se documentan cinco porque
+las dos últimas son propias de un servicio de webhooks.
 
-El enunciado pide tres; van cinco, porque las dos últimas son específicas de un
-servicio de webhooks y dejarlas fuera sería omitir lo más interesante del caso.
-
----
-
-## Resumen
-
-| # | Vulnerabilidad | Por qué aplica aquí | Estado |
+| # | Vulnerabilidad | Por qué aplica | Estado |
 |---|---|---|---|
 | A01 | Broken Access Control (BOLA) | Los `event_id` son secuenciales y adivinables | Implementado |
 | A07 | Identification & Authentication Failures | API pública sin sesión | Implementado |
-| A03 | Injection | Filtros dinámicos construyen SQL | Implementado |
-| A10 | SSRF | **El cliente elige la URL que llamamos** | Implementado |
-| A04 | Insecure Design (consumo sin límite) | Un cliente puede degradar a todos | Parcial |
+| A03 | Injection | Los filtros construyen SQL dinámico | Implementado |
+| A10 | SSRF | El cliente elige la URL de destino | Implementado |
+| A04 | Insecure Design (consumo sin límite) | Un cliente puede degradar el servicio para todos | Parcial |
 
 ---
 
-## A01 · Broken Access Control — el riesgo número uno de esta API
+## A01 · Broken Access Control
 
-### El problema
+Los identificadores del archivo de la prueba son `EVT001`, `EVT002`, `EVT003`. Si el endpoint
+de detalle resolviera el recurso solo por su id, cualquier cliente autenticado podría recorrer
+el rango y leer montos, contrapartes y patrones de pago de otras empresas. Es **BOLA**: la
+autenticación funciona —el atacante es un cliente legítimo— y solo falla la autorización sobre
+el objeto.
 
-Los identificadores del archivo de la prueba son `EVT001`, `EVT002`, `EVT003`. Son
-secuenciales y adivinables. Si el endpoint de detalle resolviera el recurso solo por
-su id, cualquier cliente autenticado podría recorrer `EVT001..EVT999` y leer las
-notificaciones de todos los demás: montos, contrapartes y patrones de pago de empresas
-competidoras.
+**Mitigación**
 
-Esto es **BOLA** (Broken Object Level Authorization), la primera de la lista del OWASP
-API Top 10 y la más común en APIs reales, porque la autenticación funciona
-perfectamente — el atacante *es* un cliente legítimo — y solo falla la autorización
-sobre el objeto.
+1. **El tenant sale del token.** No existe parámetro `client_id` en ninguna ruta ni query. La
+   petición insegura no se puede expresar.
+   ```java
+   return getUseCase.get(notificationEventId, AuthenticatedClient.clientIdOf(jwt));
+   ```
+2. **El modelo la hace imposible.** `EventQuery` exige `clientId` en su constructor. La
+   autorización no depende de recordar una comprobación.
+3. **El filtro va en la consulta**, no en memoria:
+   ```sql
+   SELECT ... FROM notification_event WHERE event_id = :eventId AND client_id = :clientId
+   ```
+4. **Un recurso ajeno responde 404, no 403.** Un 403 confirmaría la existencia del recurso y
+   convertiría la API en un oráculo de enumeración.
+5. **Scopes separados** para consulta y reenvío.
 
-### Mitigación
+Verificado: `EVT005` (de `CLIENT003`) con token de `CLIENT002` devuelve 404; `EVT003` devuelve
+200.
 
-**1. El tenant sale del token, nunca de la petición.**
-
-```java
-// NotificationEventController
-return getUseCase.get(notificationEventId, AuthenticatedClient.clientIdOf(jwt));
-```
-
-No existe ningún parámetro `client_id` en ninguna ruta ni query string. No hay forma
-de *expresar* la petición insegura.
-
-**2. El modelo hace imposible la consulta sin acotar.**
-
-`EventQuery` exige `clientId` en su constructor y falla si viene vacío. No es
-validación defensiva: es que el objeto no se puede construir mal. La autorización deja
-de depender de que alguien recuerde poner un `if`.
-
-**3. El filtro va en la consulta, no después.**
-
-```sql
-SELECT ... FROM notification_event WHERE event_id = :eventId AND client_id = :clientId
-```
-
-Filtrar en SQL y no en memoria evita la variante clásica del error: traer la fila y
-comparar después, que falla en cuanto alguien agrega un camino que olvida comparar.
-
-**4. Un recurso ajeno responde 404, no 403.**
-
-Un 403 confirma que el recurso existe y convierte la API en un oráculo para enumerar
-identificadores ajenos. Hacia afuera, "no existe" y "no es tuyo" son indistinguibles.
-
-**5. Permisos separados por operación.** Consultar y reenviar son scopes distintos: un
-token de un panel de consulta no puede disparar reenvíos.
-
-**Verificado en ejecución** — `EVT005` pertenece a `CLIENT003`:
-
-```
-EVT005 con token de CLIENT002 -> 404
-EVT003 con token de CLIENT002 -> 200
-```
-
-📁 `NotificationEventController`, `AuthenticatedClient`, `EventQuery`,
-`NotificationEventNotFoundException`, `SecurityConfig`
+📁 `NotificationEventController`, `AuthenticatedClient`, `EventQuery`, `SecurityConfig`
 
 ---
 
 ## A07 · Identification and Authentication Failures
 
-### El problema
-
-Una API pública sin sesión: si la autenticación es débil o hay un endpoint que se
-quedó abierto por descuido, todo lo demás sobra.
-
-### Mitigación
-
-**Todo cerrado por defecto.** La última regla de la cadena es `denyAll()`:
+**Todo cerrado por defecto.** La última regla de la cadena es `denyAll()`, de modo que un
+endpoint nuevo nace protegido:
 
 ```java
 .pathMatchers("/actuator/health/**", "/actuator/info").permitAll()
@@ -102,152 +59,117 @@ quedó abierto por descuido, todo lo demás sobra.
 .anyExchange().denyAll()
 ```
 
-Un endpoint nuevo **nace protegido**. Si la última regla fuera `permitAll()`, nacer sin
-protección sería el comportamiento por omisión — y ese es exactamente el descuido que
-produce las brechas.
+**Validación estricta del token.** Firma HS256 con algoritmo fijado explícitamente —lo que
+descarta el ataque de confusión de algoritmo, incluido `alg: none`—, expiración validada, y
+rechazo del token sin claim `client_id` en lugar de asumir un valor por defecto. El arranque
+falla si el secreto tiene menos de 32 bytes.
 
-**Validación estricta del token.** Firma HS256 verificada, algoritmo fijado
-explícitamente (evita el ataque de confusión de algoritmo, incluido `alg: none`),
-expiración validada por Nimbus.
+Solo `health` e `info` son públicos, por las sondas del orquestador. `/actuator/prometheus`
+exige scope: expuesto entregaría el mapa operativo del sistema.
 
-**Sin claim, sin identidad.** Un token válido pero sin `client_id` se rechaza en vez de
-asumir un valor por defecto; cualquier valor asumido sería una vía para leer datos
-ajenos.
+### Emisión de tokens
 
-**Longitud mínima de clave.** El arranque falla si el secreto tiene menos de 32 bytes:
-HS256 con clave más corta que el hash es fuerza bruta viable.
-
-**Solo `health` e `info` son públicos**, porque los necesitan las sondas de Kubernetes.
-Métricas y demás exigen scope propio — un `/actuator/prometheus` abierto entrega el
-mapa operativo del sistema. Verificado: devuelve 401 sin token.
-
-### Lo que falta para producción
-
-**Este servicio valida tokens; no los emite.** Emitir identidad es otro contexto: un
-servicio de notificaciones no debería administrar credenciales de terceros.
-
-Para que la solución se sostenga sola, la API emite sus propios tokens con el flujo
-`client_credentials` de OAuth2 en `POST /oauth/token`. Las defensas de ese endpoint, que
-es el único público y por tanto el más expuesto:
+La API emite sus propios tokens con el flujo `client_credentials` en `POST /oauth/token`. Es
+el único endpoint público y, por tanto, el más expuesto:
 
 | Riesgo | Mitigación |
 |---|---|
-| Volcado de la base | El secreto se guarda **solo como hash bcrypt**; en claro no existe en ninguna parte |
-| Enumeración de clientes | Un **único mensaje de error** para cliente inexistente, secreto incorrecto y credencial desactivada |
-| Enumeración por temporización | Si el cliente no existe se ejecuta igual una verificación **en vacío**, para que ambos casos tarden lo mismo |
-| Fuerza bruta | Límite estricto **por dirección de origen**, aparte del límite general por cliente |
-| Escalada de privilegios | Los scopes salen de la **credencial registrada**, nunca de lo que pida el solicitante |
-| Secreto en logs y proxies | Es **`POST`**, no `GET`: el secreto no viaja en la URL. La respuesta va con `Cache-Control: no-store` |
-| Token filtrado | Vigencia de **1 hora**. Un JWT no se puede revocar sin lista de revocación; la vida corta es el único control real |
+| Volcado de la base | El secreto se guarda solo como hash bcrypt |
+| Enumeración de clientes | Un único mensaje de error para todos los modos de fallo |
+| Enumeración por temporización | Verificación en vacío cuando el cliente no existe, para igualar tiempos |
+| Fuerza bruta | Límite por dirección de origen, aparte del límite por cliente |
+| Escalada de privilegios | Los scopes salen de la credencial registrada, no de la petición |
+| Secreto en logs y proxies | `POST`, no `GET`; respuesta con `Cache-Control: no-store` |
+| Token filtrado | Vigencia de 1 hora. Un JWT no se revoca sin lista de revocación |
 
-En una plataforma real esto se movería a un servicio de identidad central —o a Amazon
-Cognito en el despliegue propuesto— y la validación pasaría de clave compartida a
-**JWKS**: el servicio descargaría las claves públicas del emisor, que puede rotarlas sin
-redesplegar, y dejaría de conocer ningún secreto de firma. Es un cambio de
-configuración, no de código.
+En una plataforma real la emisión correspondería a un servicio de identidad central —Cognito
+en el despliegue propuesto— y la validación pasaría a **JWKS**: el servicio descargaría las
+claves públicas del emisor, que podría rotarlas sin redesplegar, y dejaría de conocer ningún
+secreto de firma. Es un cambio de configuración, no de código.
 
-📁 `SecurityConfig`, `AuthenticatedClient`
+📁 `SecurityConfig`, `AuthenticatedClient`, `IssueAccessTokenService`
 
 ---
 
 ## A03 · Injection
 
-### El problema
+El listado construye su `WHERE` según los filtros recibidos, que es donde suele aparecer la
+concatenación de cadenas.
 
-El listado arma su `WHERE` dinámicamente según qué filtros lleguen. Es justo el patrón
-donde suele aparecer la concatenación de strings y, con ella, la inyección SQL.
-
-### Mitigación
-
-**Todo valor variable viaja como parámetro enlazado.** Lo único que se concatena son
-fragmentos literales escritos en el código:
+**Todo valor variable viaja como parámetro enlazado.** Solo se concatenan fragmentos literales
+escritos en el código:
 
 ```java
 if (query.deliveryStatus() != null) {
-    where.append(" AND delivery_status = :deliveryStatus");   // literal del código
+    where.append(" AND delivery_status = :deliveryStatus");   // literal
     params.put("deliveryStatus", TypedValue.of(...));          // valor enlazado
 }
 ```
 
-La entrada del usuario nunca toca la cadena SQL.
-
-**El enum se valida antes de tocar la base.** Un `delivery_status` desconocido se
-rechaza con 400 listando los valores soportados; nunca llega a la consulta.
-
-**Paginación acotada.** `size` entre 1 y 100 — evita el `LIMIT` gigante que convierte
-un filtro en una descarga completa de la tabla.
+El enum se valida antes de llegar a la consulta —un `delivery_status` desconocido se rechaza
+con 400— y la paginación está acotada entre 1 y 100.
 
 📁 `R2dbcNotificationEventRepositoryAdapter.buildWhere`, `SqlBindings`, `EventQuery`
 
 ---
 
-## A10 · SSRF — la más peligrosa en un servicio de webhooks
+## A10 · SSRF
 
-### El problema
+El servicio realiza peticiones HTTP salientes a una URL que elige el cliente. Sin control, una
+suscripción puede apuntar a `http://169.254.169.254/latest/meta-data/iam/security-credentials/`
+—credenciales IAM del rol de la tarea—, a un servicio interno de la VPC o a la propia base de
+datos, y el servicio ejecutaría esa petición desde dentro de la red con su propia identidad.
 
-Este servicio hace peticiones HTTP salientes **a una URL que elige el cliente**. Esa es
-la definición literal de SSRF. Sin control, un cliente registra su webhook apuntando a:
+**Mitigación**
 
-- `http://169.254.169.254/latest/meta-data/iam/security-credentials/` — el endpoint de
-  metadatos de AWS, es decir, **credenciales IAM del rol de la tarea**
-- `http://10.0.x.x/` — cualquier servicio interno de la VPC
-- `http://localhost:5432/` — la propia base de datos
+1. **Solo HTTPS.** Se rechaza cualquier otro esquema, incluidos `file://` y `gopher://`.
+2. **Se resuelven todas las direcciones del host** —no solo la primera, porque un atacante
+   puede publicar una IP pública y otra privada— y se rechaza toda dirección no pública:
+   ```java
+   address.isLoopbackAddress()       // 127.0.0.0/8
+     || address.isLinkLocalAddress() // 169.254.0.0/16 ← metadatos de la nube
+     || address.isSiteLocalAddress() // 10/8, 172.16/12, 192.168/16
+     || address.isAnyLocalAddress()
+     || address.isMulticastAddress()
+   ```
+3. **No se siguen redirecciones** (`followRedirect(false)`). Sin esto, un destino público
+   válido puede responder `302 → http://169.254.169.254/...` y evadir toda la validación
+   anterior. Un 3xx se trata como fallo permanente.
+4. **La resolución DNS corre en `boundedElastic`**, por ser bloqueante.
+5. **Defensa en profundidad en AWS**: IMDSv2 obligatorio, egreso solo por NAT Gateway y grupos
+   de seguridad restrictivos.
+6. **Cuerpo de respuesta acotado**, para que un destino malicioso no agote la memoria.
 
-Y el servicio haría esas peticiones **desde dentro de la red**, con la identidad de la
-aplicación. En una plataforma de pagos regulada, esto es de los peores escenarios
-posibles.
+### Limitación: es una denylist, no una allowlist
 
-### Mitigación
+El control enumera lo prohibido, y por naturaleza queda incompleto. Huecos identificados:
 
-**1. Solo HTTPS.** Se rechaza cualquier otro esquema — incluidos `file://` y `gopher://`,
-clásicos para leer archivos locales o hablar con protocolos internos.
+| Hueco | Detalle |
+|---|---|
+| `100.64.0.0/10` | Rango CGNAT. `isSiteLocalAddress()` no lo cubre |
+| IPv6 mapeado | `::ffff:169.254.169.254` puede eludir la comprobación según la resolución |
+| TOCTOU / DNS rebinding | La validación resuelve el DNS y el cliente HTTP lo resuelve otra vez al conectar. Entre ambas resoluciones el registro puede cambiar a una dirección interna |
 
-**2. Se resuelve el host y se rechaza toda dirección no pública:**
+**La mitigación correcta es una allowlist por cliente.** No puede ser global —el propósito del
+servicio es que el cliente elija su URL— pero sí por tenant: el cliente registra sus dominios
+una vez, se verifican mediante un registro TXT en DNS o un challenge sobre su endpoint, y a
+partir de ahí solo se aceptan URLs bajo esos dominios. Es el modelo de verificación de dominio
+que aplican las plataformas de pago del mercado.
 
-```java
-address.isLoopbackAddress()   // 127.0.0.0/8
-  || address.isLinkLocalAddress()   // 169.254.0.0/16 ← metadatos de la nube
-  || address.isSiteLocalAddress()   // 10/8, 172.16/12, 192.168/16
-  || address.isAnyLocalAddress()
-  || address.isMulticastAddress()
-```
-
-Se comprueban **todas** las direcciones que devuelve el DNS, no solo la primera: un
-atacante puede publicar un registro con una IP pública y otra privada.
-
-**3. No se siguen redirecciones.** Detalle crítico y fácil de pasar por alto: sin esto,
-un atacante registra un destino público perfectamente válido que responde
-`302 → http://169.254.169.254/...`, y el cliente HTTP evade toda la validación
-anterior. Aquí un 3xx se trata como fallo permanente.
-
-```java
-.followRedirect(false)
-```
-
-**4. La resolución DNS corre fuera del event loop.** Es bloqueante; en `boundedElastic`
-para no congelar los hilos de Netty.
-
-**5. Defensa en profundidad en AWS.** Los controles de aplicación no bastan: en la nube
-se exige **IMDSv2** (que rompe el ataque de metadatos), el egreso sale solo por NAT
-Gateway y los grupos de seguridad restringen a dónde puede hablar la tarea.
-
-**6. Se acota el cuerpo de respuesta** que se lee de un tercero, para que un destino
-malicioso no agote la memoria del worker.
+La allowlist de dominios no resuelve por sí sola el TOCTOU: para cerrarlo hay que fijar la
+dirección IP validada al establecer la conexión, en lugar de permitir una segunda resolución.
 
 📁 `WebhookUrlValidator`, `WebClientWebhookAdapter`, `AppConfig.webhookWebClient`
 
-### Y el reverso: autenticar lo que enviamos
+### Autenticación de las notificaciones salientes
 
-Sin firma, el receptor no puede distinguir una notificación de Cobre de una fabricada
-por cualquiera que conozca su URL — que en un servicio de pagos significa aceptar
-"recibiste $10.000.000" de un desconocido.
+Sin firma, el receptor no puede distinguir una notificación legítima de una fabricada por
+quien conozca su URL. Cada entrega se firma con **HMAC-SHA256**:
+`X-Cobre-Signature: t=<epoch>,v1=<hex>`.
 
-Cada entrega va firmada con **HMAC-SHA256**: `X-Cobre-Signature: t=<epoch>,v1=<hex>`.
-
-El instante va **dentro del contenido firmado**, no solo en una cabecera aparte: así el
-receptor puede rechazar la reproducción de una captura antigua sin que un atacante
-pueda alterar la marca de tiempo. La comparación de firmas es en tiempo constante
-(`MessageDigest.isEqual`) para no filtrar por temporización cuántos bytes coincidían.
+El instante forma parte del contenido firmado y no solo de una cabecera independiente, lo que
+permite al receptor rechazar la reproducción de una captura antigua sin que la marca de tiempo
+sea manipulable. La comparación de firmas usa `MessageDigest.isEqual`, en tiempo constante.
 
 📁 `WebhookSigner`
 
@@ -255,25 +177,14 @@ pueda alterar la marca de tiempo. La comparación de firmas es en tiempo constan
 
 ## A04 · Insecure Design — consumo de recursos sin límite
 
-### El problema
+Ventana fija por cliente autenticado, 120 peticiones por minuto, con respuesta 429 y
+`Retry-After`. La cuota se contabiliza por `client_id` del token, de modo que un cliente
+abusivo no consume la de los demás.
 
-Sin límite, un solo cliente con un bucle mal escrito degrada la API para todos. Es
-denegación de servicio sin necesidad de mala intención.
-
-### Mitigación
-
-Ventana fija por cliente autenticado, 120 peticiones por minuto, respondiendo 429 con
-`Retry-After`. La cuota se lleva por `client_id` del token, así que un cliente abusivo
-no consume la de los demás.
-
-### Limitación, dicha explícitamente
-
-**El contador vive en memoria: el límite real es por instancia.** Con tres réplicas, el
-límite efectivo es el triple. Contiene el abuso accidental, no un ataque deliberado.
-
-La solución correcta es que el límite viva en el borde. En AWS, **AWS WAF con una regla
-basada en tasa** corta el tráfico *antes* de que llegue al servicio, que es donde debe
-cortarse: un límite dentro de la aplicación ya pagó el costo de aceptar la conexión.
+**Limitación:** el contador reside en memoria, por lo que el límite es por instancia. Con tres
+réplicas el límite efectivo se triplica. Contiene el abuso accidental, no un ataque deliberado.
+El control correcto vive en el borde —AWS WAF con regla basada en tasa— donde el tráfico se
+corta antes de que el servicio pague el costo de aceptar la conexión.
 
 📁 `RateLimitWebFilter`
 
@@ -281,99 +192,70 @@ cortarse: un límite dentro de la aplicación ya pagó el costo de aceptar la co
 
 ## Gestión de secretos
 
-**Ningún secreto está escrito en el código.** Es un lineamiento y no una preferencia:
-un valor escrito en el repositorio queda en el historial de git **para siempre**, aunque
-después se borre en un commit posterior, y se filtra a cualquiera que clone. Rotarlo
-obliga a reescribir la historia.
+Ningún secreto está escrito en el código. Un valor incluido en el repositorio permanece en el
+historial de git de forma permanente aunque se elimine después, y se propaga a cualquier clon.
 
-### Qué es secreto y qué no
-
-Aplicar el mismo tratamiento a todos los valores de configuración diluye el control. La
-distinción aplicada es la siguiente:
-
-| Dato | Trato | Por qué |
+| Dato | Tratamiento | Motivo |
 |---|---|---|
-| `JWT_SECRET` | **Sin valor por defecto.** La aplicación no arranca sin él | Firma los tokens: quien lo tenga puede emitir tokens de cualquier cliente |
-| `signing_secret` de webhooks | En base de datos; debe cifrarse con KMS | Permite falsificar notificaciones hacia el cliente |
-| Secretos de clientes de API | Solo el **hash bcrypt**; el valor en claro no existe en ninguna parte | Un volcado de la base no permite suplantar a nadie |
-| Credenciales de Postgres y RabbitMQ locales | Valores por defecto en el repositorio | Son contenedores desechables de `docker-compose`; no dan acceso a nada. En entornos reales vienen del gestor |
+| `JWT_SECRET` | Sin valor por defecto; la aplicación no arranca sin él | Firma los tokens: permite emitir tokens de cualquier cliente |
+| `signing_secret` de webhooks | En base de datos; pendiente de cifrar con KMS | Permite falsificar notificaciones hacia el cliente |
+| Secretos de clientes de API | Solo el hash bcrypt | Un volcado de la base no permite suplantación |
+| Credenciales de los contenedores locales | Valores por defecto en el repositorio | Contenedores desechables sin acceso a nada; en entornos reales provienen del gestor |
 
-### Cómo se inyectan
+**Inyección.** En local, un archivo `.env` no versionado, con `.env.example` como plantilla. En
+AWS, **Secrets Manager** montado como variable de entorno en la definición de tarea de ECS:
+permite rotación sin redespliegue, registra cada acceso en CloudTrail, cifra en reposo con KMS
+y mantiene el secreto fuera del repositorio y del pipeline. Para configuración no sensible
+basta Parameter Store.
 
-**En local:** un archivo `.env` que no se versiona. `.env.example` es la plantilla,
-sin valores reales, con el comando para generar el secreto (`openssl rand -base64 48`).
+**Credenciales de demostración.** `db/migration` crea la tabla `api_credential` sin sembrar
+filas. Las credenciales de demostración residen en `db/demo`, ruta que solo cargan los perfiles
+`local` y `demo`. En producción las crea el proceso de onboarding: se genera un secreto
+aleatorio, se muestra una única vez y se persiste solo su hash.
 
-**En AWS:** **Secrets Manager**, montado como variable de entorno en la definición de
-tarea de ECS. Ventajas sobre escribirlo en la configuración:
-
-- **Rotación sin redesplegar**, con rotación automática programada
-- **CloudTrail registra cada acceso**: queda auditoría de quién leyó qué y cuándo
-- **Cifrado en reposo con KMS** y permisos por rol de IAM
-- El secreto **nunca pasa por el repositorio ni por el pipeline**
-
-Para valores de configuración que no son secretos (URLs, tiempos de espera, tamaños de
-lote) basta **Parameter Store**, que es gratuito y suficiente.
-
-### Las credenciales de demostración no están en las migraciones de producción
-
-`db/migration` crea la tabla `api_credential` y **no siembra ninguna fila**. Las
-credenciales de demostración viven en `db/demo`, una ruta que solo cargan los perfiles
-`local` y `demo`.
-
-En producción esas filas las crea el proceso de onboarding: se genera un secreto
-aleatorio, se le muestra **una única vez** al cliente y solo se persiste su hash.
-Sembrar credenciales desde una migración pondría secretos en el repositorio.
-
-### Lo que falta
-
-- **El `signing_secret` de las suscripciones sigue en claro en la base.** Debe cifrarse
-  con KMS o moverse a Secrets Manager con referencia desde la fila.
-- **Sin rotación automática.** Rotar la clave de firma hoy invalidaría todos los tokens
-  vigentes; hacerlo sin cortar exige aceptar dos claves durante una ventana de gracia.
-- **Sin escaneo de secretos en el pipeline.** Una herramienta como `gitleaks` en CI
-  impediría que un descuido llegue al repositorio.
+**Pendiente:** cifrar el `signing_secret` con KMS; rotación de la clave de firma con ventana de
+dos claves; escaneo de secretos en CI (`gitleaks`).
 
 ---
 
-## Transversales
+## Controles transversales
 
-**Los errores no filtran nada.** El manejador genérico devuelve un identificador de
-correlación y deja el detalle en los logs. Una traza o un mensaje de driver en la
-respuesta le regala al atacante el mapa del sistema (A05).
-
-Verificado — ante `IllegalStateException("connection to postgres://cobre:cobre@db:5432 failed")`:
+**Los errores no filtran información.** El manejador genérico devuelve un identificador de
+correlación y deja el detalle en los logs. Ante
+`IllegalStateException("connection to postgres://cobre:cobre@db:5432 failed")`:
 
 ```json
 {"status":500,"title":"Error interno",
  "detail":"Ocurrio un error inesperado. Reporte el identificador d75bd035-..."}
 ```
 
-**Datos sensibles fuera de los logs.** El `content` de la notificación —
-`"Credit card payment received for $150.00"` — **nunca** se registra. Es dato
-financiero del cliente; mandarlo a un índice de logs lo replica en un sistema con otra
-retención, otro control de acceso y otro respaldo. En una compañía con PCI DSS e
-ISO 27001, eso amplía el alcance de auditoría sin ganar nada.
+**Datos sensibles fuera de los logs.** El `content` de la notificación no se registra. Es
+información financiera del cliente, y enviarla a un índice de logs la replica en un sistema con
+distinta retención, control de acceso y respaldo, ampliando el alcance de auditoría de PCI DSS
+e ISO 27001.
 
-**CSRF desactivado, y es correcto.** La API es sin estado y se autentica con Bearer, no
-con cookies. Sin cookies de sesión no hay vector CSRF que proteger; dejarlo activo solo
-añadiría ruido.
+**Enmascaramiento en el log de acceso.** Los valores de parámetros sensibles se sustituyen
+antes de escribir la línea: `GET /notification_events?client_secret=***`. El nombre del
+parámetro se conserva para poder detectar y notificar la integración defectuosa.
 
-**Cabeceras de seguridad**: HSTS a un año con subdominios, `X-Content-Type-Options`,
-`X-Frame-Options: DENY`.
+**CSRF desactivado.** La API es sin estado y se autentica con Bearer, no con cookies; sin
+cookies de sesión no existe vector CSRF.
 
-**Sin CORS.** Es una API servidor a servidor. No habilitar CORS es una decisión, no un
-olvido: habilitarlo invitaría a que alguien ponga el token en un navegador.
+**Cabeceras**: HSTS a un año con subdominios, `X-Content-Type-Options`, `X-Frame-Options: DENY`.
+
+**Sin CORS.** Es una API servidor a servidor. Habilitarlo invitaría a colocar el token en un
+navegador.
 
 ---
 
-## Qué haría a continuación
+## Siguientes pasos
 
 | Prioridad | Acción |
 |---|---|
 | Alta | JWKS contra el IdP en lugar de HS256 con secreto compartido |
+| Alta | Allowlist de dominios verificados por cliente, con pinning de la IP resuelta |
 | Alta | Cifrar los `signing_secret` con KMS o moverlos a Secrets Manager |
 | Alta | Rate limiting en WAF, no en la aplicación |
 | Media | Rotación de secretos de firma con periodo de gracia de dos claves |
-| Media | Bitácora de auditoría de reenvíos: quién reenvió qué y cuándo |
+| Media | Bitácora de auditoría de reenvíos |
 | Media | mTLS opcional para clientes que lo exijan |
-| Baja | Lista blanca de dominios de webhook por cliente |
