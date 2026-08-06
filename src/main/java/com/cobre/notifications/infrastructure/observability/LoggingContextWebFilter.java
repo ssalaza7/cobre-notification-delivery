@@ -69,6 +69,11 @@ public class LoggingContextWebFilter implements WebFilter {
         if (path.startsWith(ACTUATOR_PATH)) {
             return;
         }
+        // Se registra tambien la query, porque saber con que filtros consulto el cliente
+        // es la mitad del diagnostico. Pero enmascarada: lo que el cliente mande por la
+        // URL no lo controlamos, y un secreto ahi queda indexado para siempre.
+        String loggedPath = SensitiveDataMasker.maskQuery(
+                path, exchange.getRequest().getURI().getRawQuery());
 
         HttpStatusCode status = exchange.getResponse().getStatusCode();
         int code = status != null ? status.value() : 0;
@@ -79,7 +84,7 @@ public class LoggingContextWebFilter implements WebFilter {
         MDC.put(LogFields.LOG_TYPE, LogFields.TYPE_API);
         MDC.put(LogFields.REQUEST_ID, requestId);
         MDC.put("http.method", exchange.getRequest().getMethod().name());
-        MDC.put("http.path", path);
+        MDC.put("http.path", loggedPath);
         MDC.put("http.status", String.valueOf(code));
         MDC.put("duration_ms", String.valueOf(millis));
         if (!clientId.isBlank()) {
@@ -88,9 +93,9 @@ public class LoggingContextWebFilter implements WebFilter {
         try {
             // Un 5xx es problema nuestro y merece nivel de error; un 4xx es del cliente.
             if (code >= 500) {
-                log.error("{} {} -> {} en {}ms", exchange.getRequest().getMethod(), path, code, millis);
+                log.error("{} {} -> {} en {}ms", exchange.getRequest().getMethod(), loggedPath, code, millis);
             } else {
-                log.info("{} {} -> {} en {}ms", exchange.getRequest().getMethod(), path, code, millis);
+                log.info("{} {} -> {} en {}ms", exchange.getRequest().getMethod(), loggedPath, code, millis);
             }
         } finally {
             MDC.remove(LogFields.LOG_TYPE);

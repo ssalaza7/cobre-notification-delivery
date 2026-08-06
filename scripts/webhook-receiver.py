@@ -4,13 +4,25 @@
 Imprime lo que llega, verifica la firma HMAC y permite forzar codigos de respuesta
 para ver el comportamiento de los reintentos sin depender de un servicio externo.
 
-Por defecto responde 200. El identificador del evento decide el comportamiento:
-"FALLA" agota el ciclo de reintentos, "RECUPERA" falla una vez y luego acepta. Asi una misma instancia sirve para
-demostrar la entrega exitosa y el ciclo de reintentos sin reiniciar nada a mitad de una
-presentacion.
+Por defecto responde 200.
+
+PARA QUE SIRVEN LOS PATRONES DEL IDENTIFICADOR
+Hace falta demostrar varios comportamientos —entrega limpia, reintentos, fallo definitivo,
+timeout— y reiniciar el receptor con otra bandera entre uno y otro corta el hilo de una
+presentacion. La solucion es que el receptor mire el identificador del evento y decida
+como responder. Asi, con UNA sola instancia corriendo, se elige el escenario al publicar:
+
+    EVT-DEMO-1        -> responde 200. Entrega exitosa.
+    EVT-RECUPERA-1    -> responde 503 una vez y luego 200. Entrega recuperada por el backoff.
+    EVT-FALLA-1       -> responde 503 siempre. Se agotan los reintentos y queda fallida.
+    EVT-RECHAZA-1     -> responde 400. Fallo permanente: NO se reintenta.
+    EVT-LENTO-1       -> no contesta a tiempo. Timeout del lado del cliente.
+
+El receptor no es parte del sistema: hace de cliente. Es el sistema del cliente el que
+decide si acepta o rechaza, y esto lo simula.
 
 Uso:
-    python3 scripts/webhook-receiver.py                 # 200, salvo eventos con FALLA
+    python3 scripts/webhook-receiver.py                 # 200, salvo los patrones de arriba
     python3 scripts/webhook-receiver.py --status 500    # falla siempre: agota los reintentos
     python3 scripts/webhook-receiver.py --fail-first 2  # falla los 2 primeros de CUALQUIER evento
 
@@ -21,6 +33,7 @@ import argparse
 import hashlib
 import hmac
 import json
+import time
 from collections import defaultdict
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -32,7 +45,8 @@ SECRETS = {
 
 attempts_by_event = defaultdict(int)
 options = argparse.Namespace(status=200, fail_first=0, fail_pattern="FALLA", fail_times=3,
-                             recover_pattern="RECUPERA", recover_after=1)
+                             recover_pattern="RECUPERA", recover_after=1,
+                             reject_pattern="RECHAZA", slow_pattern="LENTO", slow_seconds=8)
 
 
 def verify_signature(client_id: str, timestamp: str, signature: str, body: bytes) -> str:
@@ -56,6 +70,12 @@ class WebhookHandler(BaseHTTPRequestHandler):
         client_id = self.path.rsplit("/", 1)[-1]
 
         attempts_by_event[event_id] += 1
+        # Tardar mas que el response-timeout del servicio produce un timeout real: el
+        # intento queda "sin respuesta", que es distinto de recibir un codigo de error.
+        if options.slow_pattern and options.slow_pattern.upper() in event_id.upper():
+            print(f"[{event_id}] no contesto a proposito ({options.slow_seconds}s)", flush=True)
+            time.sleep(options.slow_seconds)
+
         status = decide_status(event_id, attempts_by_event[event_id])
 
         verdict = verify_signature(
@@ -98,6 +118,10 @@ def decide_status(event_id: str, intento: int) -> int:
         return 503 if intento <= options.recover_after else 200
     if options.fail_pattern and options.fail_pattern.upper() in id_mayus:
         return 503 if intento <= options.fail_times else 200
+    # 400 es un contrato roto: el servicio NO lo reintenta, porque insistir con el mismo
+    # cuerpo va a dar el mismo 400.
+    if options.reject_pattern and options.reject_pattern.upper() in id_mayus:
+        return 400
     return options.status
 
 

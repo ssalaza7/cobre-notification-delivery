@@ -4,86 +4,338 @@
   "description": "Lo que vigilaria el equipo de monitoreo: si las entregas estan saliendo, cuantas se recuperan gracias a los reintentos, con que codigos rechazan los destinos y cuanto tardan en responder.",
   "timezone": "browser",
   "refresh": "5s",
-  "time": { "from": "now-30m", "to": "now" },
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
   "panels": [
     {
       "type": "stat",
       "title": "Entregadas",
       "description": "Notificaciones cerradas con exito, con o sin reintentos de por medio.",
-      "gridPos": { "h": 4, "w": 5, "x": 0, "y": 0 },
-      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "green" } } },
-      "targets": [{ "expr": "sum(cobre_notification_settled_total{status=\"completed\"}) or vector(0)", "legendFormat": "entregadas" }]
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "green"
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(cobre_notification_settled_total{status=\"completed\"}) or vector(0)",
+          "legendFormat": "entregadas"
+        }
+      ]
     },
     {
       "type": "stat",
       "title": "Fallidas",
       "description": "Entregas que agotaron los reintentos o fallaron de forma permanente. Quedan disponibles para reenvio manual.",
-      "gridPos": { "h": 4, "w": 5, "x": 5, "y": 0 },
-      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "red" } } },
-      "targets": [{ "expr": "sum(cobre_notification_settled_total{status=\"failed\"}) or vector(0)", "legendFormat": "fallidas" }]
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 5,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "red"
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(cobre_notification_settled_total{status=\"failed\"}) or vector(0)",
+          "legendFormat": "fallidas"
+        }
+      ]
     },
     {
       "type": "stat",
       "title": "Reintentos exitosos",
       "description": "Notificaciones que fallaron al principio pero terminaron entregandose gracias al backoff. Es el valor que justifica toda la estrategia de reintentos: sin ella, estas se habrian perdido.",
-      "gridPos": { "h": 4, "w": 5, "x": 10, "y": 0 },
-      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "yellow" } } },
-      "targets": [{ "expr": "sum(cobre_notification_settled_total{status=\"completed\", after_retries=\"true\"}) or vector(0)", "legendFormat": "recuperadas" }]
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 10,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "yellow"
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(cobre_notification_settled_total{status=\"completed\", after_retries=\"true\"}) or vector(0)",
+          "legendFormat": "recuperadas"
+        }
+      ]
     },
     {
       "type": "stat",
       "title": "Reintentos agotados",
       "description": "Notificaciones que se reintentaron hasta el final y aun asi no se pudieron entregar. Son las que requieren intervencion.",
-      "gridPos": { "h": 4, "w": 5, "x": 15, "y": 0 },
-      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "orange" } } },
-      "targets": [{ "expr": "sum(cobre_notification_settled_total{status=\"failed\", after_retries=\"true\"}) or vector(0)", "legendFormat": "agotadas" }]
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 15,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "orange"
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(cobre_notification_settled_total{status=\"failed\", after_retries=\"true\"}) or vector(0)",
+          "legendFormat": "agotadas"
+        }
+      ]
     },
     {
       "type": "stat",
       "title": "Reenvios manuales",
       "description": "Cuantas veces un cliente tuvo que pedir un reenvio. Si crece, algo estructural esta fallando.",
-      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
-      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "blue" } } },
-      "targets": [{ "expr": "sum(cobre_notification_replay_requested_total) or vector(0)", "legendFormat": "reenvios" }]
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(cobre_notification_replay_requested_total) or vector(0)",
+          "legendFormat": "reenvios"
+        }
+      ]
     },
     {
       "type": "timeseries",
       "title": "Errores por codigo de respuesta",
       "description": "Con que rechazan los destinos. Un 5xx es transitorio y se reintenta; un 4xx es un contrato roto y no se reintenta, porque insistir no lo arregla. 'sin_respuesta' son timeouts y conexiones rechazadas.",
-      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 4 },
-      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 25, "lineWidth": 2, "stacking": { "mode": "normal" } }, "unit": "reqps" } },
-      "targets": [{ "expr": "sum by (http_status) (rate(cobre_notification_delivery_errors_total[1m]))", "legendFormat": "HTTP {{http_status}}" }]
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 25,
+            "lineWidth": 2,
+            "stacking": {
+              "mode": "normal"
+            }
+          },
+          "unit": "reqps"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (http_status) (rate(cobre_notification_delivery_errors_total[1m]))",
+          "legendFormat": "HTTP {{http_status}}"
+        }
+      ]
     },
     {
       "type": "timeseries",
       "title": "Latencia del webhook del cliente",
       "description": "Cuanto tarda en responder el destino. Es lo primero que se degrada antes de que empiecen los timeouts, asi que es la senal mas temprana de que un cliente esta en problemas.",
-      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 4 },
-      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10, "lineWidth": 2 }, "unit": "s" } },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 2
+          },
+          "unit": "s"
+        }
+      },
       "targets": [
-        { "expr": "histogram_quantile(0.50, sum by (le) (rate(cobre_notification_delivery_seconds_bucket[5m])))", "legendFormat": "p50" },
-        { "expr": "histogram_quantile(0.95, sum by (le) (rate(cobre_notification_delivery_seconds_bucket[5m])))", "legendFormat": "p95" },
-        { "expr": "histogram_quantile(0.99, sum by (le) (rate(cobre_notification_delivery_seconds_bucket[5m])))", "legendFormat": "p99" }
+        {
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(cobre_notification_delivery_seconds_bucket[5m])))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(cobre_notification_delivery_seconds_bucket[5m])))",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(cobre_notification_delivery_seconds_bucket[5m])))",
+          "legendFormat": "p99"
+        }
       ]
     },
     {
       "type": "timeseries",
       "title": "Intentos de entrega por desenlace",
       "description": "DELIVERED es lo normal. Un salto de RETRYABLE_FAILURE indica destinos degradados que todavia se recuperan; uno de PERMANENT_FAILURE, contratos rotos que hay que avisarle al cliente.",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
-      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 20, "lineWidth": 2 }, "unit": "reqps" } },
-      "targets": [{ "expr": "sum by (outcome) (rate(cobre_notification_delivery_attempts_total[1m]))", "legendFormat": "{{outcome}}" }]
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 13
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 20,
+            "lineWidth": 2
+          },
+          "unit": "reqps"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(cobre_notification_delivery_attempts_total[1m]))",
+          "legendFormat": "{{outcome}}"
+        }
+      ]
     },
     {
       "type": "timeseries",
       "title": "Entregas cerradas: a la primera frente a recuperadas",
       "description": "Si la franja de recuperadas crece, los destinos se estan degradando aunque el resultado final siga siendo bueno. Es una alerta temprana que el conteo de entregadas por si solo esconde.",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
-      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 25, "lineWidth": 2, "stacking": { "mode": "normal" } }, "unit": "reqps" } },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 13
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 25,
+            "lineWidth": 2,
+            "stacking": {
+              "mode": "normal"
+            }
+          },
+          "unit": "reqps"
+        }
+      },
       "targets": [
-        { "expr": "sum(rate(cobre_notification_settled_total{status=\"completed\", after_retries=\"false\"}[1m]))", "legendFormat": "a la primera" },
-        { "expr": "sum(rate(cobre_notification_settled_total{status=\"completed\", after_retries=\"true\"}[1m]))", "legendFormat": "recuperadas con reintentos" },
-        { "expr": "sum(rate(cobre_notification_settled_total{status=\"failed\"}[1m]))", "legendFormat": "fallidas" }
+        {
+          "expr": "sum(rate(cobre_notification_settled_total{status=\"completed\", after_retries=\"false\"}[1m]))",
+          "legendFormat": "a la primera"
+        },
+        {
+          "expr": "sum(rate(cobre_notification_settled_total{status=\"completed\", after_retries=\"true\"}[1m]))",
+          "legendFormat": "recuperadas con reintentos"
+        },
+        {
+          "expr": "sum(rate(cobre_notification_settled_total{status=\"failed\"}[1m]))",
+          "legendFormat": "fallidas"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Clientes con entregas fallando",
+      "description": "Que cliente se cayo, no solo cuantas entregas fallaron. Es la primera pregunta de guardia y la unica metrica etiquetada por cliente. Una linea que despega y no baja es un webhook caido: hay que avisarle a ese cliente.",
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 22
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 25,
+            "lineWidth": 2
+          },
+          "unit": "reqps"
+        }
+      },
+      "targets": [
+        {
+          "expr": "topk(10, sum by (client_id) (rate(cobre_notification_client_failures_total[5m])))",
+          "legendFormat": "{{client_id}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Sin respuesta del cliente: timeouts y conexiones rechazadas",
+      "description": "El destino ni siquiera contesto. Se separa de los errores con codigo porque la causa es distinta: aqui el problema esta en la red o en un servidor que no acepta conexiones, no en como respondio la aplicacion del cliente.",
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 22
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 25,
+            "lineWidth": 2
+          },
+          "unit": "reqps"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(cobre_notification_delivery_errors_total{http_status=\"sin_respuesta\"}[1m])) or vector(0)",
+          "legendFormat": "sin respuesta"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Tiempo de respuesta del webhook, promedio",
+      "description": "Cuanto tarda en contestar el sistema del cliente, en promedio. Complementa el panel de percentiles: el promedio muestra la tendencia general y los percentiles muestran a quien le esta yendo mal.",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 31
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 25,
+            "lineWidth": 2
+          },
+          "unit": "s"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(cobre_notification_delivery_seconds_sum[5m])) / sum(rate(cobre_notification_delivery_seconds_count[5m]))",
+          "legendFormat": "promedio"
+        }
       ]
     }
   ]

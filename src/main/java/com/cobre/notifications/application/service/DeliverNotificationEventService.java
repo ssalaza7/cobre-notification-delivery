@@ -107,6 +107,11 @@ public class DeliverNotificationEventService implements DeliverNotificationEvent
             NotificationEvent event, int attemptNumber, WebhookDeliveryResult result) {
         Instant now = clock.instant();
         metrics.deliveryAttempted(event.eventType(), result.outcome(), result.durationMs(), result.httpStatus());
+        if (result.outcome().isFailure()) {
+            // Se cuenta por intento y no al agotar el ciclo: si se esperara al final, un
+            // webhook caido tardaria todo el backoff en aparecer en el tablero de guardia.
+            metrics.clientDeliveryFailing(event.clientId());
+        }
 
         DeliveryAttempt attempt = DeliveryAttempt.of(
                 event.eventId(), attemptNumber, event.replayCount(), now, result);

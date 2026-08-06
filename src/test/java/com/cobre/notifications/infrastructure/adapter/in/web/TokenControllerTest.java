@@ -10,7 +10,12 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
+import org.springframework.mock.web.server.MockServerWebExchange;
+import org.springframework.web.server.ServerWebExchange;
+import org.springframework.web.server.ServerWebInputException;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
@@ -82,6 +87,51 @@ class TokenControllerTest {
 
         StepVerifier.create(controller.issue(PETICION))
                 .expectError(InvalidClientCredentialsException.class)
+                .verify();
+    }
+
+    /**
+     * El RFC 6749 define el cuerpo del token como formulario, y asi lo piden las
+     * pasarelas del mercado. Se acepta tambien JSON por comodidad, pero el formato del
+     * estandar tiene que funcionar.
+     */
+    private static ServerWebExchange formulario(String cuerpo) {
+        return MockServerWebExchange.from(MockServerHttpRequest
+                .post("/oauth/token")
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                .body(cuerpo));
+    }
+
+    @Test
+    @DisplayName("acepta el cuerpo como formulario, que es la forma del RFC 6749")
+    void acepta_formulario() {
+        when(useCase.issue(any())).thenReturn(Mono.just(
+                new AccessToken("token-firmado", Duration.ofHours(1), "notifications:read")));
+
+        StepVerifier.create(controller.issueForm(formulario(
+                        "grant_type=client_credentials&client_id=CLIENT002&client_secret=demo-secret-client002")))
+                .assertNext(response -> assertThat(response.getBody().accessToken()).isEqualTo("token-firmado"))
+                .verifyComplete();
+
+        ArgumentCaptor<ClientCredentials> captor = ArgumentCaptor.forClass(ClientCredentials.class);
+        verify(useCase).issue(captor.capture());
+        assertThat(captor.getValue().clientId()).isEqualTo("CLIENT002");
+    }
+
+    @Test
+    @DisplayName("un formulario incompleto se rechaza aqui: no pasa por @Valid y llegaria como null al caso de uso")
+    void formulario_incompleto() {
+        StepVerifier.create(controller.issueForm(formulario("grant_type=client_credentials&client_id=CLIENT002")))
+                .expectError(ServerWebInputException.class)
+                .verify();
+    }
+
+    @Test
+    @DisplayName("un grant_type no soportado se rechaza antes de tocar las credenciales")
+    void grant_type_no_soportado() {
+        StepVerifier.create(controller.issueForm(formulario(
+                        "grant_type=password&client_id=CLIENT002&client_secret=x")))
+                .expectError(ServerWebInputException.class)
                 .verify();
     }
 

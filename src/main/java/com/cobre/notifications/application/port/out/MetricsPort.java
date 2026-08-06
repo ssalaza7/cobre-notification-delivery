@@ -10,9 +10,9 @@ import com.cobre.notifications.domain.model.DeliveryStatus;
  * de uso pueda verificarse en pruebas ("cuando se agotan los reintentos, se cuenta
  * un fallo definitivo") sin levantar un registro de metricas.
  *
- * <p>Ninguna firma recibe {@code clientId}: usarlo como etiqueta haria explotar la
- * cardinalidad de las series de Prometheus con miles de clientes. El corte por
- * cliente se hace sobre los logs estructurados y la base de datos.
+ * <p>Salvo {@link #clientDeliveryFailing(String)}, ninguna firma recibe {@code clientId}:
+ * usarlo como etiqueta en todas las metricas haria explotar la cardinalidad de las series
+ * de Prometheus con miles de clientes.
  */
 public interface MetricsPort {
 
@@ -30,6 +30,21 @@ public interface MetricsPort {
      *                     backoff, que son dos senales operativas distintas
      */
     void deliverySettled(String eventType, DeliveryStatus finalStatus, boolean afterRetries);
+
+    /**
+     * Una entrega hacia ese cliente acaba de fallar.
+     *
+     * <p>Es la <b>unica</b> metrica etiquetada por cliente, y existe porque cuando un
+     * webhook se cae la primera pregunta de guardia es "de quien". Sin esta etiqueta hay
+     * que ir a los logs, que es mas lento justo cuando el tiempo importa, y no se puede
+     * alertar automaticamente.
+     *
+     * <p>La cardinalidad se sostiene porque la serie solo nace cuando un cliente falla:
+     * la cota no son todos los clientes, son los que estan fallando ahora. Prometheus
+     * deja de exponer la serie cuando el proceso reinicia, y en Datadog la metrica
+     * caduca sin datos.
+     */
+    void clientDeliveryFailing(String clientId);
 
     void retryScheduled(String eventType, int attemptNumber);
 

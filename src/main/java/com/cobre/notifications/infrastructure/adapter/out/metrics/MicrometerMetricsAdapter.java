@@ -29,9 +29,9 @@ import java.util.concurrent.atomic.AtomicLong;
  *       Es el gauge que dispara la alerta cuando la cola crece mas rapido de lo que se drena.</li>
  * </ul>
  *
- * <p>Ninguna metrica lleva {@code client_id} como etiqueta: con miles de clientes eso
- * multiplica las series de tiempo hasta tumbar a Prometheus. El corte por cliente se
- * hace sobre los logs estructurados y la API de detalle.
+ * <p>Solo {@code cobre_notification_client_failures_total} lleva {@code client_id}. El
+ * resto no: con miles de clientes, etiquetarlas todas multiplica las series de tiempo
+ * hasta tumbar a Prometheus, y en Datadog cada combinacion se factura.
  */
 @Component
 public class MicrometerMetricsAdapter implements MetricsPort {
@@ -45,6 +45,7 @@ public class MicrometerMetricsAdapter implements MetricsPort {
     private static final String BACKLOG = "cobre.notification.backlog";
     private static final String TOKENS = "cobre.auth.token";
     private static final String ERRORS = "cobre.notification.delivery.errors";
+    private static final String CLIENT_FAILURES = "cobre.notification.client.failures";
 
     private final MeterRegistry registry;
     private final Map<DeliveryStatus, AtomicLong> backlog = new EnumMap<>(DeliveryStatus.class);
@@ -90,6 +91,11 @@ public class MicrometerMetricsAdapter implements MetricsPort {
                 // Separa lo que salio a la primera de lo que se recupero con reintentos:
                 // una entrega recuperada indica un destino inestable aunque termine bien.
                 "after_retries", String.valueOf(afterRetries)).increment();
+    }
+
+    @Override
+    public void clientDeliveryFailing(String clientId) {
+        registry.counter(CLIENT_FAILURES, "client_id", clientId).increment();
     }
 
     @Override

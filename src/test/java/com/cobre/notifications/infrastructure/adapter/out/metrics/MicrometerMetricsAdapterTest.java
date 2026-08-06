@@ -42,6 +42,32 @@ class MicrometerMetricsAdapterTest {
     }
 
     @Test
+    @DisplayName("cuenta los fallos por cliente: es lo que permite alertar a guardia de quien se cayo")
+    void cuenta_los_fallos_por_cliente() {
+        adapter.clientDeliveryFailing("CLIENT001");
+        adapter.clientDeliveryFailing("CLIENT001");
+        adapter.clientDeliveryFailing("CLIENT002");
+
+        assertThat(registry.counter("cobre.notification.client.failures",
+                "client_id", "CLIENT001").count()).isEqualTo(2);
+        assertThat(registry.counter("cobre.notification.client.failures",
+                "client_id", "CLIENT002").count()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("es la unica metrica con client_id: el resto no lo lleva, por cardinalidad")
+    void solo_esa_metrica_lleva_client_id() {
+        adapter.deliveryAttempted("credit_transfer", AttemptOutcome.RETRYABLE_FAILURE, 5000, 503);
+        adapter.deliverySettled("credit_transfer", DeliveryStatus.FAILED, true);
+        adapter.clientDeliveryFailing("CLIENT001");
+
+        assertThat(registry.getMeters().stream()
+                .filter(m -> m.getId().getTag("client_id") != null)
+                .map(m -> m.getId().getName()))
+                .containsExactly("cobre.notification.client.failures");
+    }
+
+    @Test
     @DisplayName("cuenta los errores por codigo de respuesta del destino")
     void cuenta_los_errores_por_codigo() {
         adapter.deliveryAttempted("credit_transfer", AttemptOutcome.RETRYABLE_FAILURE, 5000, 503);

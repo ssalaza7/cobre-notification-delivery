@@ -136,6 +136,9 @@ class DeliverNotificationEventServiceTest {
         assertThat(attempt.getValue().outcome()).isEqualTo(AttemptOutcome.RETRYABLE_FAILURE);
         assertThat(attempt.getValue().httpStatus()).isEqualTo(503);
         verify(metrics).deliveryAttempted(EVENT_TYPE, AttemptOutcome.RETRYABLE_FAILURE, 5000, 503);
+        // Se marca al cliente ya en el primer fallo, sin esperar a que se agote el ciclo:
+        // guardia necesita saber quien se cayo ahora, no dentro de quince minutos.
+        verify(metrics).clientDeliveryFailing(CLIENT_ID);
     }
 
     @Test
