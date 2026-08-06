@@ -67,7 +67,16 @@ class WebhookHandler(BaseHTTPRequestHandler):
         body = self.rfile.read(length)
         event_id = self.headers.get("X-Cobre-Event-Id", "?")
         attempt = self.headers.get("X-Cobre-Delivery-Attempt", "?")
+        # El cliente se deduce de la ruta, que es como estan sembradas las
+        # suscripciones. Cuando se usa WEBHOOK_OVERRIDE_URL todas apuntan a una misma
+        # ruta, asi que se cae al client_id del propio cuerpo para poder verificar la
+        # firma igual.
         client_id = self.path.rsplit("/", 1)[-1]
+        if client_id not in SECRETS:
+            try:
+                client_id = json.loads(body).get("client_id", client_id)
+            except ValueError:
+                pass
 
         attempts_by_event[event_id] += 1
         # Tardar mas que el response-timeout del servicio produce un timeout real: el

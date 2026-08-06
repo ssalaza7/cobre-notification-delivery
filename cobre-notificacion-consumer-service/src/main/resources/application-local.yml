@@ -9,8 +9,9 @@ spring:
 
 cobre:
   sqs:
-    # Emulador local de SQS.
-    endpoint: http://localhost:9324
+    # Emulador local de SQS. Se respeta la variable para que el mismo perfil sirva
+    # ejecutando en la maquina y dentro de la red de compose.
+    endpoint: ${SQS_ENDPOINT:http://localhost:9324}
 
 
 logging:

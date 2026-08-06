@@ -1,0 +1,11 @@
+# Fuera de la construccion: nada de esto influye en el jar y engorda el contexto.
+.git
+.gradle
+**/build
+logs
+docs
+postman
+observability
+scripts
+*.md
+.env

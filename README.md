@@ -340,6 +340,26 @@ Requisitos: Docker y Java 21. No es necesario instalar Gradle.
 
 Puertos: la API en 8080, el worker en 8081 y el consumidor en 8083.
 
+### Todo en contenedores
+
+```bash
+cp .env.example .env
+openssl rand -base64 48          # asignar el resultado a JWT_SECRET
+set -a; source .env; set +a
+
+python3 scripts/webhook-receiver.py &   # hace de cliente, corre en la máquina
+
+docker compose --profile apps up -d --build
+```
+
+Levanta seis contenedores: PostgreSQL, Redpanda, ElasticMQ y los tres servicios. Cada
+servicio construye su propia imagen desde su `Dockerfile`, igual que se desplegaría en ECS.
+
+### Desde el IDE
+
+Sin el perfil `apps`, el compose levanta solo la infraestructura y los servicios se arrancan
+a mano:
+
 ```bash
 # 0. Construir los tres jars
 ./gradlew bootJar
