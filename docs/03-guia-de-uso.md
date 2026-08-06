@@ -63,7 +63,7 @@ comodín.
 
 ```bash
 WEBHOOK_OVERRIDE_URL=https://el-destino/webhook \
-java -jar build/libs/notification-delivery-service-0.0.1-SNAPSHOT.jar
+java -jar delivery-worker/build/libs/delivery-worker-0.0.1-SNAPSHOT.jar
 ```
 
 Tiene precedencia sobre las suscripciones almacenadas. Está previsto para escenarios en los

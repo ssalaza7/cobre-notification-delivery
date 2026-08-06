@@ -38,12 +38,31 @@ flowchart LR
     API -.->|encola reenvío| Q
 ```
 
-### Worker y API son despliegues independientes
+### Tres ejecutables independientes
 
-La carga del worker la determina el volumen de eventos de la plataforma; la de la API, el
-uso que hagan las personas. Son magnitudes distintas y evolucionan por separado, de modo que
-escalar una no debe obligar a provisionar réplicas de la otra. La misma imagen arranca en uno
-u otro rol según la variable `COBRE_ROLE`.
+```
+notification-delivery-service/
+├── common/            dominio · casos de uso · persistencia · cola · métricas · logs
+├── event-consumer/    consume el bus y encola la entrega
+├── delivery-worker/   entrega al webhook y reintenta
+└── monitoring-api/    API self-service y emisión de tokens
+```
+
+Cada uno es un jar con sus propias dependencias, verificable sobre los artefactos:
+
+| Módulo | Dependencia propia | Lo que no lleva |
+|---|---|---|
+| `event-consumer` | `reactor-kafka`, `kafka-clients` | Spring Security |
+| `delivery-worker` | cliente HTTP reactivo, firma HMAC | Kafka, Spring Security |
+| `monitoring-api` | Spring Security, resource server JWT | Kafka |
+
+Las cargas son de naturaleza distinta —el worker sigue el ritmo de la plataforma y la API el
+de las personas—, de modo que escalar una no obliga a provisionar réplicas de la otra. Qué
+adaptadores arrancan lo decide el classpath de cada módulo, no una anotación evaluada en
+tiempo de ejecución.
+
+**Regla de entrada a `common`:** algo se traslada allí cuando lo necesita un segundo módulo,
+no antes. Cada dependencia añadida la cargan los tres jars aunque dos no la usen.
 
 ### Kafka como bus, SQS como cola de trabajo
 
@@ -244,8 +263,8 @@ afectado para notificar a su equipo).
 
 ### Pruebas
 
-196 pruebas, sin fallos. Cobertura del 94,5 % de instrucciones y 94,6 % de líneas. El build
-falla si la cobertura desciende del 90 %.
+190 pruebas, sin fallos. Cobertura agregada de los cuatro módulos: 94,5 % de instrucciones
+y 94,6 % de líneas. El build falla si desciende del 90 %.
 
 ---
 
@@ -253,8 +272,13 @@ falla si la cobertura desciende del 90 %.
 
 Requisitos: Docker y Java 21. No es necesario instalar Gradle.
 
+Puertos: la API en 8080, el worker en 8081 y el consumidor en 8083.
+
 ```bash
-# 1. Secreto de firma de tokens. La aplicación no arranca sin él.
+# 0. Construir los tres jars
+./gradlew bootJar
+
+# 1. Secreto de firma de tokens. Ningún módulo arranca sin él.
 cp .env.example .env
 openssl rand -base64 48          # asignar el resultado a JWT_SECRET
 set -a; source .env; set +a
@@ -265,8 +289,10 @@ docker compose up -d
 # 3. Receptor de webhooks de prueba: simula el sistema del cliente y verifica la firma
 python3 scripts/webhook-receiver.py
 
-# 4. Aplicación
-SPRING_PROFILES_ACTIVE=local ./gradlew bootRun
+# 4. Los tres ejecutables, en terminales separadas
+SPRING_PROFILES_ACTIVE=local java -jar monitoring-api/build/libs/monitoring-api-0.0.1-SNAPSHOT.jar
+SPRING_PROFILES_ACTIVE=local java -jar delivery-worker/build/libs/delivery-worker-0.0.1-SNAPSHOT.jar
+SPRING_PROFILES_ACTIVE=local java -jar event-consumer/build/libs/event-consumer-0.0.1-SNAPSHOT.jar
 
 # 5. Publicación de un evento
 ./scripts/publish-event.sh EVT-DEMO-1 CLIENT001 credit_transfer "Transferencia por 1.500.000"

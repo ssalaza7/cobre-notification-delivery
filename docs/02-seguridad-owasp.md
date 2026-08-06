@@ -159,7 +159,7 @@ que aplican las plataformas de pago del mercado.
 La allowlist de dominios no resuelve por sí sola el TOCTOU: para cerrarlo hay que fijar la
 dirección IP validada al establecer la conexión, en lugar de permitir una segunda resolución.
 
-📁 `WebhookUrlValidator`, `WebClientWebhookAdapter`, `AppConfig.webhookWebClient`
+📁 `WebhookUrlValidator`, `WebClientWebhookAdapter`, `DeliveryWorkerConfig.webhookWebClient` (módulo `delivery-worker`)
 
 ### Autenticación de las notificaciones salientes
 

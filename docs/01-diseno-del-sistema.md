@@ -56,9 +56,10 @@ flowchart TB
     platform["Microservicios<br/>de la plataforma"]
     bus[("Bus de eventos<br/>de la plataforma")]
 
-    subgraph service["Notification Delivery Service · un microservicio"]
-        api["<b>API self-service</b><br/>Spring WebFlux<br/>GET · GET/id · POST replay"]
-        worker["<b>Worker de entrega</b><br/>consume, entrega, reintenta"]
+    subgraph service["Notification Delivery Service · monorepo, tres ejecutables"]
+        consumer["<b>event-consumer</b><br/>consume el bus y encola"]
+        worker["<b>delivery-worker</b><br/>entrega y reintenta"]
+        api["<b>monitoring-api</b><br/>GET · GET/id · POST replay"]
     end
 
     subgraph queues["Cola de trabajo"]
@@ -70,7 +71,9 @@ flowchart TB
     hook["Webhook del cliente"]
     obs["Logs y métricas"]
 
-    platform --> bus --> worker
+    platform --> bus --> consumer
+    consumer --> dq
+    consumer --> db
     worker <--> dq
     worker -- "reintentos agotados" --> dlq
     worker -- "POST firmado" --> hook
@@ -81,12 +84,27 @@ flowchart TB
 
     style api fill:#1f6feb,color:#fff
     style worker fill:#1f6feb,color:#fff
+    style consumer fill:#1f6feb,color:#fff
 ```
 
-### Un microservicio, dos roles de ejecución
+### Un dominio, tres ejecutables
 
-La API y el worker son el mismo artefacto desplegado dos veces: mismo contenedor, distintos
-adaptadores activos.
+El repositorio es un monorepo con una librería compartida y tres módulos ejecutables:
+
+```
+common/            dominio · casos de uso · persistencia · cola de trabajo · observabilidad
+event-consumer/    consume el bus y encola la entrega
+delivery-worker/   entrega al webhook y aplica la política de reintentos
+monitoring-api/    API self-service y emisión de tokens
+```
+
+Cada módulo declara únicamente las dependencias que usa. El cliente de Kafka existe solo en
+`event-consumer`, el cliente HTTP saliente solo en `delivery-worker` y la cadena de seguridad
+web solo en `monitoring-api`. La selección de adaptadores la determina el classpath, no una
+condición evaluada al arrancar.
+
+El criterio de entrada a `common` es que una funcionalidad la necesite un segundo módulo.
+Cada dependencia añadida allí la cargan los tres artefactos aunque dos no la utilicen.
 
 **Despliegues separados, sí.** Los perfiles de carga son independientes: la API responde a
 personas y paneles, mientras que el worker sigue el ritmo de la plataforma y puede tener que
@@ -94,14 +112,17 @@ drenar millones de eventos en cualquier momento. Escalarlos en conjunto implica 
 uno de los dos. Además, la saturación de cada uno tiene consecuencias distintas —consultas
 degradadas frente a notificaciones sin entregar— y el worker no necesita exposición a internet.
 
-**Microservicios separados, no.** Ambos operan sobre las mismas tablas y comparten la máquina
-de estados. Dos servicios contra una misma base de datos constituyen un monolito distribuido:
-asumen el costo de la red sin obtener aislamiento. El límite de un microservicio se traza por
-capacidad de negocio, y aquí el *bounded context* es uno solo.
+**Servicios autónomos, no.** Los tres operan sobre las mismas tablas y comparten la máquina de
+estados, que por eso vive en `common`. Duplicar esa lógica en cada módulo no produciría
+independencia sino divergencia: el acoplamiento reside en el esquema, no en el código.
 
-La separación tendría sentido si la entrega pasara a tener otro equipo responsable y otro SLA.
-En ese caso el corte correcto no sería API contra worker, sino que el servicio de entrega
-fuera dueño de los datos y la API self-service pasara a ser un modelo de lectura (CQRS).
+El límite de un microservicio se traza por capacidad de negocio, y aquí el *bounded context*
+es uno solo. La separación en módulos aísla dependencias y ciclos de build, no datos.
+
+La independencia real exigiría que cada módulo fuera dueño de sus datos: que la API dejara de
+leer las tablas que escribe el worker y pasara a ser un modelo de lectura alimentado por
+eventos, con el reenvío convertido en un comando publicado (CQRS). Es la evolución que
+corresponde cuando la entrega tenga otro equipo responsable y otro SLA.
 
 ---
 
@@ -142,8 +163,8 @@ flowchart LR
 ```
 
 Las dependencias apuntan siempre hacia el interior. `domain` y `application` no importan
-ninguna clase de Spring; el cableado reside en `infrastructure/config/AppConfig`. La
-consecuencia verificable es que las pruebas del dominio y los casos de uso se ejecutan sin
+ninguna clase de Spring; el cableado reside en la clase de configuración de cada ejecutable.
+La consecuencia verificable es que las pruebas del dominio y los casos de uso se ejecutan sin
 contexto de Spring, sin base de datos y sin broker.
 
 **Regla que sostiene el aislamiento entre clientes:** `EventQuery` exige `clientId` en su
