@@ -125,12 +125,21 @@ services:
       # La aplicacion corre en el host, no en un contenedor.
       - "host.docker.internal:host-gateway"
 
+  # Renderiza paneles como PNG. Existe para poder generar las evidencias del README
+  # con un comando en vez de tomar capturas a mano, que envejecen sin que nadie lo note.
+  grafana-renderer:
+    image: grafana/grafana-image-renderer:3.11.6
+    container_name: cobre-notifications-grafana-renderer
+    profiles: ["observability"]
+
   grafana:
     image: grafana/grafana:11.3.1
     container_name: cobre-notifications-grafana
     profiles: ["observability"]
-    depends_on: [prometheus]
+    depends_on: [prometheus, grafana-renderer]
     environment:
+      GF_RENDERING_SERVER_URL: http://grafana-renderer:8081/render
+      GF_RENDERING_CALLBACK_URL: http://grafana:3000/
       # Sin login: es un entorno local desechable y en una demostracion no se pierde
       # tiempo escribiendo credenciales.
       GF_AUTH_ANONYMOUS_ENABLED: "true"
