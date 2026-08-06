@@ -184,6 +184,16 @@ notificación fallida se extrae del listado.
 docker compose --profile observability up -d
 ```
 
+| Proceso | Puerto |
+|---|---|
+| `monitoring-api` | 8080 |
+| `delivery-worker` | 8081 |
+| `event-consumer` | 8083 |
+
+Los tres exponen `/actuator/health` y `/actuator/prometheus`. El consumidor y el worker no
+sirven tráfico de negocio por HTTP: el servidor existe para las sondas del orquestador y para
+que Prometheus pueda raspar sus métricas.
+
 | Consola | URL |
 |---|---|
 | Grafana — el tablero se aprovisiona automáticamente | http://localhost:3000 |

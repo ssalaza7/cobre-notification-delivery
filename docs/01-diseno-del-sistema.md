@@ -131,11 +131,12 @@ corresponde cuando la entrega tenga otro equipo responsable y otro SLA.
 ```mermaid
 flowchart LR
     subgraph in["Adaptadores de entrada"]
-        rest["NotificationEventController"]
-        msg["KafkaPlatformEventListener<br/>SqsDeliveryCommandListener"]
+        msg1["KafkaPlatformEventListener<br/><i>event-consumer</i>"]
+        msg2["SqsDeliveryCommandListener<br/><i>delivery-worker</i>"]
+        rest["NotificationEventController<br/><i>monitoring-api</i>"]
     end
 
-    subgraph app["Aplicación · puertos y casos de uso"]
+    subgraph app["Aplicación · puertos y casos de uso · <i>common</i>"]
         direction TB
         pin["<b>Puertos de entrada</b><br/>Ingest · Deliver<br/>Query · Get · Replay"]
         uc["<b>Servicios</b><br/>orquestan dominio y puertos"]
@@ -143,15 +144,15 @@ flowchart LR
         pin --> uc --> pout
     end
 
-    subgraph dom["Dominio · cero framework"]
+    subgraph dom["Dominio · cero framework · <i>common</i>"]
         model["NotificationEvent · DeliveryStatus<br/>RetryPolicy · Subscription<br/>DeliveryAttempt · EventQuery"]
     end
 
     subgraph out["Adaptadores de salida"]
-        r2dbc["Persistencia"]
-        web["WebClient + HMAC + anti-SSRF"]
-        mq["Cola de trabajo"]
-        met["Micrometer"]
+        r2dbc["Persistencia<br/><i>common</i>"]
+        mq["Cola de trabajo<br/><i>common</i>"]
+        met["Micrometer<br/><i>common</i>"]
+        web["WebClient + HMAC + anti-SSRF<br/><i>delivery-worker</i>"]
     end
 
     in --> pin
@@ -179,17 +180,18 @@ no se previene con una comprobación, sino impidiendo que el caso inseguro sea e
 ```mermaid
 sequenceDiagram
     participant K as Bus de eventos
-    participant W as Worker
+    participant CON as event-consumer
     participant DB as Base de datos
+    participant Q as Cola de entrega
+    participant W as delivery-worker
     participant S as Suscripciones
     participant H as Webhook cliente
-    participant Q as Cola de entrega
 
-    K->>W: evento de plataforma
-    W->>DB: INSERT ... ON CONFLICT DO NOTHING
-    Note over W,DB: event_id es PK:<br/>la reentrega no duplica
-    W->>Q: encolar entrega
-    W-->>K: confirma el offset
+    K->>CON: evento de plataforma
+    CON->>DB: INSERT ... ON CONFLICT DO NOTHING
+    Note over CON,DB: event_id es PK:<br/>la reentrega no duplica
+    CON->>Q: encolar entrega
+    CON-->>K: confirma el offset
 
     Q->>W: orden de entrega
     W->>DB: leer estado autoritativo
@@ -391,8 +393,9 @@ flowchart TB
             nat["NAT Gateway<br/>Elastic IPs fijas"]
         end
         subgraph priv["Subredes privadas"]
-            api["ECS Fargate · servicio API<br/>autoescala por RPS/CPU"]
-            worker["ECS Fargate · servicio worker<br/>autoescala por profundidad de cola"]
+            api["ECS Fargate · monitoring-api<br/>autoescala por RPS/CPU"]
+            worker["ECS Fargate · delivery-worker<br/>autoescala por profundidad de cola"]
+            consumer["ECS Fargate · event-consumer<br/>autoescala por lag del consumer group"]
             aurora[("Aurora PostgreSQL<br/>escritor + réplica de lectura")]
             os[("OpenSearch Service")]
         end
@@ -410,7 +413,9 @@ flowchart TB
     dd["Datadog<br/>métricas · APM"]
 
     users --> r53 --> waf --> alb --> api
-    confluent -. "PrivateLink" .-> worker
+    confluent -. "PrivateLink" .-> consumer
+    consumer --> aurora
+    consumer --> vpce
     api --> aurora
     worker --> aurora
     api --> vpce --> sqs
@@ -425,7 +430,11 @@ flowchart TB
 
     style api fill:#1f6feb,color:#fff
     style worker fill:#1f6feb,color:#fff
+    style consumer fill:#1f6feb,color:#fff
 ```
+
+Cada módulo se despliega como un servicio de ECS independiente, con su propia imagen, su
+propia política de autoescalado y su propio ciclo de despliegue.
 
 | Local (este repositorio) | AWS | Cambio en el código |
 |---|---|---|
@@ -457,11 +466,11 @@ rompería integraciones.
 
 | Dimensión | Mecanismo | Señal de autoescalado | En AWS |
 |---|---|---|---|
-| API self-service | Réplicas sin estado tras un balanceador | RPS por réplica / CPU | ECS Fargate + ALB |
-| Worker de entrega | Consumidores en competencia sobre la cola | Profundidad de la cola | `ApproximateNumberOfMessagesVisible` |
+| API self-service | Réplicas de `monitoring-api` sin estado tras un balanceador | RPS por réplica / CPU | ECS Fargate + ALB |
+| Worker de entrega | Réplicas de `delivery-worker` en competencia sobre la cola | Profundidad de la cola | `ApproximateNumberOfMessagesVisible` |
 | Lecturas de la API | Réplica de lectura | Latencia de consulta | Aurora read replica |
 | Escrituras | Nodo escritor; particionar por `client_id` si procede | — | Aurora writer |
-| Ingesta desde el bus | Consumidores hasta el paralelismo del bus | Retraso del consumidor | Lag del consumer group |
+| Ingesta desde el bus | Réplicas de `event-consumer` hasta el paralelismo del bus | Retraso del consumidor | Lag del consumer group |
 
 El cuello de botella no reside en el servicio sino en el webhook del cliente. Por eso la
 métrica que gobierna el autoescalado del worker es la profundidad de cola y no la CPU: el

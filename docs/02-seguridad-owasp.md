@@ -42,7 +42,7 @@ el objeto.
 Verificado: `EVT005` (de `CLIENT003`) con token de `CLIENT002` devuelve 404; `EVT003` devuelve
 200.
 
-📁 `NotificationEventController`, `AuthenticatedClient`, `EventQuery`, `SecurityConfig`
+📁 `monitoring-api`: `NotificationEventController`, `AuthenticatedClient`, `SecurityConfig` · `common`: `EventQuery`
 
 ---
 
@@ -87,7 +87,7 @@ en el despliegue propuesto— y la validación pasaría a **JWKS**: el servicio 
 claves públicas del emisor, que podría rotarlas sin redesplegar, y dejaría de conocer ningún
 secreto de firma. Es un cambio de configuración, no de código.
 
-📁 `SecurityConfig`, `AuthenticatedClient`, `IssueAccessTokenService`
+📁 `monitoring-api`: `SecurityConfig`, `AuthenticatedClient` · `common`: `IssueAccessTokenService`
 
 ---
 
@@ -109,7 +109,7 @@ if (query.deliveryStatus() != null) {
 El enum se valida antes de llegar a la consulta —un `delivery_status` desconocido se rechaza
 con 400— y la paginación está acotada entre 1 y 100.
 
-📁 `R2dbcNotificationEventRepositoryAdapter.buildWhere`, `SqlBindings`, `EventQuery`
+📁 `common`: `R2dbcNotificationEventRepositoryAdapter.buildWhere`, `SqlBindings`, `EventQuery`
 
 ---
 
@@ -159,7 +159,7 @@ que aplican las plataformas de pago del mercado.
 La allowlist de dominios no resuelve por sí sola el TOCTOU: para cerrarlo hay que fijar la
 dirección IP validada al establecer la conexión, en lugar de permitir una segunda resolución.
 
-📁 `WebhookUrlValidator`, `WebClientWebhookAdapter`, `DeliveryWorkerConfig.webhookWebClient` (módulo `delivery-worker`)
+📁 `delivery-worker`: `WebhookUrlValidator`, `WebClientWebhookAdapter`, `DeliveryWorkerConfig.webhookWebClient`
 
 ### Autenticación de las notificaciones salientes
 
@@ -171,7 +171,7 @@ El instante forma parte del contenido firmado y no solo de una cabecera independ
 permite al receptor rechazar la reproducción de una captura antigua sin que la marca de tiempo
 sea manipulable. La comparación de firmas usa `MessageDigest.isEqual`, en tiempo constante.
 
-📁 `WebhookSigner`
+📁 `delivery-worker`: `WebhookSigner`
 
 ---
 
@@ -186,7 +186,7 @@ réplicas el límite efectivo se triplica. Contiene el abuso accidental, no un a
 El control correcto vive en el borde —AWS WAF con regla basada en tasa— donde el tráfico se
 corta antes de que el servicio pague el costo de aceptar la conexión.
 
-📁 `RateLimitWebFilter`
+📁 `monitoring-api`: `RateLimitWebFilter`
 
 ---
 

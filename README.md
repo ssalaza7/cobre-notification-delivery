@@ -19,23 +19,34 @@ POST /notification_events/{id}/replay  reenvío de una entrega fallida
 flowchart LR
     SVC["Servicios de la plataforma<br/>pagos · transferencias · saldos"]
     K[("Kafka<br/>cobre.platform.events")]
-    W["<b>Worker</b><br/>entrega y reintenta"]
-    API["<b>API</b><br/>self-service"]
     Q[("SQS<br/>cola de entrega")]
     DLQ[("SQS<br/>DLQ")]
     DB[("PostgreSQL<br/>eventos + bitácora")]
     CLI["Webhook del cliente"]
     USR["Cliente"]
 
+    subgraph repo["monorepo · tres ejecutables"]
+        CON["<b>event-consumer</b><br/>ingesta y encola"]
+        W["<b>delivery-worker</b><br/>entrega y reintenta"]
+        API["<b>monitoring-api</b><br/>consulta y reenvío"]
+    end
+
     SVC -->|publica| K
-    K -->|consume| W
-    W <-->|encola · reintenta| Q
+    K -->|consume| CON
+    CON -->|encola| Q
+    CON --- DB
+    Q -->|toma la orden| W
+    W -->|reencola con retardo| Q
     Q -.->|reintentos agotados| DLQ
     W -->|POST firmado HMAC| CLI
     W --- DB
     API --- DB
     USR -->|consulta · reenvía| API
     API -.->|encola reenvío| Q
+
+    style CON fill:#1f6feb,color:#fff
+    style W fill:#1f6feb,color:#fff
+    style API fill:#1f6feb,color:#fff
 ```
 
 ### Tres ejecutables independientes
@@ -82,14 +93,24 @@ direcciones de conexión.
 
 ## 2. Arquitectura hexagonal
 
+Las capas atraviesan los módulos: la librería compartida contiene el interior del hexágono y
+los adaptadores se reparten según quién los use.
+
 ```
-domain/          modelo puro, sin dependencias de framework
-application/     port/in · port/out · casos de uso
-infrastructure/  adaptadores: REST · Kafka · SQS · R2DBC · WebClient · Micrometer
+common/
+  domain/            modelo puro, sin dependencias de framework
+  application/       port/in · port/out · casos de uso
+  infrastructure/    adaptadores compartidos: R2DBC · SQS · Micrometer · logs
+
+event-consumer/      adaptador de entrada: Kafka
+delivery-worker/     adaptador de entrada: cola SQS
+                     adaptador de salida:  WebClient + HMAC + anti-SSRF
+monitoring-api/      adaptador de entrada: REST + seguridad
 ```
 
 Las dependencias apuntan siempre hacia el interior. Los paquetes `domain` y `application` no
-importan ninguna clase de Spring; el cableado reside en `infrastructure/config`.
+importan ninguna clase de Spring; el cableado reside en la clase de configuración de cada
+ejecutable.
 
 La consecuencia verificable es que las pruebas del dominio y de los casos de uso se ejecutan
 sin contexto de Spring, sin base de datos y sin broker.
@@ -107,16 +128,17 @@ los adaptadores correspondientes: ni el dominio ni los casos de uso cambian.
 sequenceDiagram
     participant P as Plataforma
     participant K as Kafka
-    participant W as Worker
+    participant CON as event-consumer
     participant DB as PostgreSQL
     participant Q as SQS
+    participant W as delivery-worker
     participant C as Webhook del cliente
 
     P->>K: publica evento
-    K->>W: consume
-    W->>DB: guarda (idempotente por event_id)
-    W->>Q: encola la entrega
-    Note over W,K: confirma el offset
+    K->>CON: consume
+    CON->>DB: guarda (idempotente por event_id)
+    CON->>Q: encola la entrega
+    Note over CON,K: confirma el offset
     Q->>W: entrega el mensaje
     W->>DB: verifica suscripción activa
     W->>C: POST + firma HMAC
@@ -140,7 +162,7 @@ incluye la cabecera `X-Cobre-Event-Id` para que el receptor descarte repeticione
 ```mermaid
 sequenceDiagram
     participant Q as SQS
-    participant W as Worker
+    participant W as delivery-worker
     participant C as Webhook del cliente
 
     Q->>W: intento 1
@@ -168,7 +190,7 @@ instante, generando un pico de carga sobre un sistema que acaba de restablecerse
 ```mermaid
 sequenceDiagram
     participant Q as SQS
-    participant W as Worker
+    participant W as delivery-worker
     participant C as Webhook del cliente
     participant D as DLQ
 
@@ -192,10 +214,10 @@ reintentan, dado que la repetición produciría el mismo resultado.
 ```mermaid
 sequenceDiagram
     participant U as Cliente
-    participant API
+    participant API as monitoring-api
     participant DB as PostgreSQL
     participant Q as SQS
-    participant W as Worker
+    participant W as delivery-worker
 
     U->>API: POST /oauth/token
     API-->>U: access_token
