@@ -526,10 +526,10 @@ instrumentan en la materialización de la sección 9.
 | Escrituras | Nodo escritor; particionar por `client_id` si llega el caso | — | Aurora writer |
 | Ingesta desde el bus | Consumidores hasta el paralelismo que permita el bus | Retraso del consumidor | Lag del consumer group |
 
-**El cuello de botella real no es nuestro: es el webhook del cliente.** Por eso la
-métrica que gobierna el autoescalado del worker es la profundidad de cola y no la CPU
-— la CPU se queda plana mientras el servicio espera respuestas de red, y un
-autoescalado por CPU no reaccionaría nunca.
+El cuello de botella no reside en el servicio sino en el webhook del cliente. Por esa
+razón la métrica que gobierna el autoescalado del worker es la profundidad de cola y no
+la CPU: el consumo de CPU permanece plano mientras el servicio espera respuestas de red,
+de modo que un autoescalado basado en CPU no reaccionaría.
 
 **Vecino ruidoso.** Hoy todos los clientes comparten la cola de entrega. Un cliente con
 un pico de millones de eventos retrasa al resto. La evolución natural es una cola
@@ -566,7 +566,7 @@ descubra en producción.
 
 ## 12. Limitaciones conocidas
 
-Cosas que faltan, dichas antes de que las pregunte el panel:
+
 
 1. **Sin circuit breaker por cliente.** Si el webhook de un cliente lleva horas caído,
    cada evento suyo sigue gastando 5 intentos y capacidad del worker. Un breaker

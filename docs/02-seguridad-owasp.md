@@ -288,7 +288,8 @@ obliga a reescribir la historia.
 
 ### Qué es secreto y qué no
 
-Tratar todo igual es teatro. La distinción que se aplica aquí:
+Aplicar el mismo tratamiento a todos los valores de configuración diluye el control. La
+distinción aplicada es la siguiente:
 
 | Dato | Trato | Por qué |
 |---|---|---|

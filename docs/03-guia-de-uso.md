@@ -1,18 +1,18 @@
 # Guía de uso
 
-Lo operativo. El [README](../README.md) cubre la arquitectura y los escenarios; aquí está el
-detalle de cómo se maneja el servicio.
+Documentación operativa del servicio. El [README](../README.md) describe la arquitectura y
+los escenarios de entrega; este documento cubre su manejo.
 
-- [Registrar webhooks](#registrar-webhooks)
-- [Tokens](#tokens)
-- [El receptor de pruebas](#el-receptor-de-pruebas)
+- [Registro de webhooks](#registro-de-webhooks)
+- [Tokens de acceso](#tokens-de-acceso)
+- [Receptor de pruebas](#receptor-de-pruebas)
 - [Colección de Postman](#colección-de-postman)
-- [Las consolas](#las-consolas)
+- [Consolas de observabilidad](#consolas-de-observabilidad)
 - [Aislamiento entre clientes](#aislamiento-entre-clientes)
 
 ---
 
-## Registrar webhooks
+## Registro de webhooks
 
 ```bash
 ./scripts/register-webhook.sh CLIENT001 https://mi-sistema.com/webhooks
@@ -28,11 +28,11 @@ Webhook registrado.
     whsec_H6foh8fFGCR1AAVdbUFvo2J3KAzFjHDFGCF6Dmcq
 ```
 
-El secreto **se muestra una sola vez**. Con él el cliente verifica la cabecera
-`X-Cobre-Signature` de cada notificación: es lo que le permite saber que el mensaje viene de
-nosotros y no de alguien que descubrió su URL.
+El secreto de firma se muestra únicamente en el momento del alta. Con él, el cliente verifica
+la cabecera `X-Cobre-Signature` de cada notificación y confirma que el mensaje procede del
+servicio y no de un tercero que haya descubierto la URL.
 
-### Ver, cambiar y dar de baja
+### Consulta, modificación y baja
 
 ```bash
 ./scripts/register-webhook.sh --list CLIENT001
@@ -40,51 +40,55 @@ nosotros y no de alguien que descubrió su URL.
 ./scripts/register-webhook.sh --off CLIENT001 '*'
 ```
 
-Cambiar la URL **no rota el secreto**: hacerlo rompería la verificación del cliente sin
-avisarle. La baja no borra la fila, la desactiva — la bitácora de lo ya entregado apunta a
-ella.
+La modificación de la URL no rota el secreto de firma: hacerlo invalidaría la verificación en
+el cliente sin previo aviso. La baja desactiva la suscripción en lugar de eliminar la fila,
+porque la bitácora de entregas anteriores hace referencia a ella.
 
-Todo aplica desde la siguiente notificación. No hay que reiniciar nada.
+Los cambios surten efecto a partir de la siguiente notificación; no requieren reinicio.
 
 ### Un destino por tipo de evento
 
-El esquema admite una suscripción por `event_type`, más un comodín `*` que recoge el resto.
-Sirve para que un cliente mande cada tipo a un sistema distinto:
+El esquema admite una suscripción por `event_type`, más un comodín `*` que cubre el resto.
+Permite que un cliente dirija cada tipo de evento a un sistema distinto:
 
 ```bash
 ./scripts/register-webhook.sh CLIENT001 https://pagos.mi-sistema.com/hooks   credit_transfer
 ./scripts/register-webhook.sh CLIENT001 https://alertas.mi-sistema.com/hooks balance_updated
 ```
 
-Al entregar gana el tipo específico sobre el comodín.
+En la resolución del destino, la suscripción de tipo específico tiene prioridad sobre el
+comodín.
 
-### Redirigir todo sin tocar la base
+### Redirección global por variable de entorno
 
 ```bash
 WEBHOOK_OVERRIDE_URL=https://el-destino/webhook \
 java -jar build/libs/notification-delivery-service-0.0.1-SNAPSHOT.jar
 ```
 
-Tiene precedencia sobre lo que haya en la base. Útil cuando la URL de prueba se conoce el
-mismo día; arranca en 3 segundos.
+Tiene precedencia sobre las suscripciones almacenadas. Está previsto para escenarios en los
+que la URL de destino se conoce en el momento de la ejecución.
 
-### Qué se valida
+### Validación del destino
 
-Sin el perfil `local`, la validación va en modo estricto: **se exige HTTPS** y se rechazan
-destinos que resuelvan a la red interna (`169.254.169.254`, rangos privados, loopback). Sin
-eso el servicio sería un proxy: cualquiera podría registrar una URL interna y conseguir que
-Cobre haga esa petición desde dentro de su red. Es SSRF, y aquí importa especialmente porque
-**la URL destino la elige el cliente**.
+Fuera del perfil `local`, la validación opera en modo estricto: exige HTTPS y rechaza los
+destinos que resuelvan a direcciones de red interna (`169.254.169.254`, rangos privados,
+loopback).
 
-Verificado contra un endpoint HTTPS público real (`postman-echo.com`): entregado en 1
-intento. El mismo destino en `http://`: `failed` en 1 intento, *"El webhook debe usar
-HTTPS"*.
+Sin esta validación el servicio actuaría como proxy: un cliente podría registrar una URL
+interna y obtener que el servicio realizara esa petición desde dentro de la red. Es la
+vulnerabilidad SSRF, especialmente relevante aquí porque la URL de destino la define el
+cliente.
+
+Comportamiento verificado contra un endpoint HTTPS público (`postman-echo.com`): entrega
+completada en un intento. El mismo destino sobre `http://` produce estado `failed` en un solo
+intento, con el mensaje *"El webhook debe usar HTTPS"*.
 
 ---
 
-## Tokens
+## Tokens de acceso
 
-Acepta los dos formatos de cuerpo. El primero es el del estándar:
+El endpoint admite dos formatos de cuerpo. El primero corresponde al estándar:
 
 ```bash
 curl -X POST http://localhost:8080/oauth/token \
@@ -99,78 +103,82 @@ TOKEN=$(curl -s -X POST http://localhost:8080/oauth/token \
   | python3 -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
 ```
 
+Credenciales sembradas para demostración:
+
 | client_id | client_secret | scopes |
 |---|---|---|
 | `CLIENT001` | `demo-secret-client001` | read · replay · monitor |
 | `CLIENT002` | `demo-secret-client002` | read · replay · monitor |
-| `CLIENT003` | `demo-secret-client003` | **solo read** |
+| `CLIENT003` | `demo-secret-client003` | solo read |
 
-`CLIENT003` no puede reenviar a propósito: consultar y reenviar son autorizaciones distintas.
+`CLIENT003` carece de permiso de reenvío de forma deliberada: la consulta y el reenvío son
+autorizaciones independientes.
 
-### Por qué POST y no GET
+### Método POST
 
-Un `GET` llevaría el `client_secret` en la URL, y las URLs no se quedan donde uno cree: van
-al log de acceso del balanceador, al historial del navegador, a la cabecera `Referer` y a
-cualquier proxy intermedio — todos fuera de nuestro control. Es además lo que exige el
-RFC 6749 para `client_credentials`, y la forma en que lo piden las pasarelas del mercado.
+Un `GET` transportaría el `client_secret` en la URL. Las URLs quedan registradas en el log de
+acceso del balanceador, en el historial del navegador, en la cabecera `Referer` y en los
+proxies intermedios, todos ellos fuera del control del servicio. El RFC 6749 exige POST para
+el flujo `client_credentials`, y es la forma que implementan las pasarelas de pago del
+mercado.
 
-### Los logs enmascaran
+### Enmascaramiento en los logs
 
-Que nosotros no pongamos secretos en la URL no impide que un cliente lo haga por error al
-integrar. El log de acceso tapa el valor de cualquier parámetro sensible antes de escribirlo:
+El servicio no transmite secretos por la URL, pero una integración incorrecta del cliente sí
+puede hacerlo. El log de acceso sustituye el valor de los parámetros sensibles antes de
+escribir la línea:
 
 ```
 GET /notification_events?size=1&client_secret=***&access_token=***
 ```
 
-Se conserva el **nombre** del parámetro a propósito: saber que alguien mandó un
-`client_secret` por la URL es justo lo que permite avisarle de que corrija la integración. Un
-secreto que llega al índice no se puede "desfiltrar": queda replicado en cada backup y obliga
-a rotarlo.
+El nombre del parámetro se conserva de forma intencionada: permite detectar la integración
+defectuosa y notificarla. Un secreto que llega al índice queda replicado en cada copia de
+seguridad y obliga a rotarlo.
 
 ---
 
-## El receptor de pruebas
+## Receptor de pruebas
 
-`scripts/webhook-receiver.py` **hace de cliente**: recibe la notificación, verifica la firma
-y responde. No es parte del sistema — simula el sistema del cliente, que es quien de verdad
-decide si acepta o rechaza.
+`scripts/webhook-receiver.py` cumple el papel del cliente: recibe la notificación, verifica la
+firma y responde. No forma parte del sistema; simula el sistema receptor, que es quien
+determina si acepta o rechaza la entrega.
 
-Hay que poder mostrar varios comportamientos —entrega limpia, reintentos, fallo definitivo,
-timeout— y reiniciar el receptor con otra bandera entre uno y otro corta el hilo de una
-presentación. Por eso **el receptor mira el identificador del evento y decide cómo
-responder**. Con una sola instancia corriendo, el escenario se elige al publicar:
+Para demostrar los distintos comportamientos —entrega correcta, reintentos, fallo definitivo,
+timeout— sin reiniciar el receptor entre uno y otro, el receptor determina su respuesta a
+partir del identificador del evento. Con una única instancia en ejecución, el escenario se
+selecciona en el momento de publicar:
 
-| Si publicas | El receptor responde | Qué demuestra |
+| Identificador publicado | Respuesta del receptor | Comportamiento demostrado |
 |---|---|---|
-| `EVT-DEMO-1` | 200 | Entrega exitosa a la primera |
-| `EVT-RECUPERA-1` | 503, después 200 | El backoff recupera la entrega |
-| `EVT-FALLA-1` | 503 siempre | Se agotan los reintentos: queda `failed` y va a la DLQ |
-| `EVT-RECHAZA-1` | 400 | Contrato roto: **no se reintenta** |
-| `EVT-LENTO-1` | no contesta a tiempo | Timeout: el destino ni respondió |
+| `EVT-DEMO-1` | 200 | Entrega correcta en el primer intento |
+| `EVT-RECUPERA-1` | 503 y después 200 | Entrega recuperada por el backoff |
+| `EVT-FALLA-1` | 503 siempre | Reintentos agotados: estado `failed` y derivación a la DLQ |
+| `EVT-RECHAZA-1` | 400 | Fallo permanente: no se reintenta |
+| `EVT-LENTO-1` | sin respuesta a tiempo | Timeout del destino |
 
-Es una convención **del receptor**, no del servicio. El servicio trata todos los eventos
-igual; el que decide es el destino.
+Es una convención del receptor de pruebas, no del servicio. El servicio procesa todos los
+eventos de forma idéntica.
 
 ---
 
 ## Colección de Postman
 
-En [postman/](../postman/), tres carpetas y siete peticiones. Solo lo que un cliente hace de
-verdad.
+Ubicada en [postman/](../postman/), con tres carpetas y siete peticiones que reproducen el uso
+habitual de un cliente.
 
-| Carpeta | Peticiones | Qué demuestra |
+| Carpeta | Peticiones | Contenido |
 |---|---|---|
-| **1 · Flujo exitoso** | 1 | Publicar el evento. **Es lo único que se hace**: el resto es autónomo |
-| **2 · Flujo con reintento** | 1 | Publicar un evento cuyo destino rechaza. Los reintentos aparecen solos |
-| **3 · API self-service** | 5 | Token, listado, detalle, reenvío, detalle otra vez |
+| 1 · Flujo exitoso | 1 | Publicación del evento. El resto del flujo es autónomo |
+| 2 · Flujo con reintento | 1 | Publicación de un evento cuyo destino rechaza la entrega |
+| 3 · API self-service | 5 | Token, listado, detalle, reenvío y detalle posterior |
 
-Las peticiones encadenan variables: el token se guarda al obtenerlo y el id de la
-notificación fallida se captura del listado.
+Las peticiones encadenan variables: el token se almacena al obtenerlo y el identificador de la
+notificación fallida se extrae del listado.
 
 ---
 
-## Las consolas
+## Consolas de observabilidad
 
 ```bash
 docker compose --profile observability up -d
@@ -178,71 +186,73 @@ docker compose --profile observability up -d
 
 | Consola | URL |
 |---|---|
-| **Grafana** — el tablero ya viene cargado | http://localhost:3000 |
-| **Kibana** — las vistas se cargan con `./scripts/kibana-import.sh` | http://localhost:5601 |
-| **SQS** — la cola de entrega y la DLQ | http://localhost:9324 |
-| **Prometheus** — las métricas en crudo | http://localhost:9091 |
+| Grafana — el tablero se aprovisiona automáticamente | http://localhost:3000 |
+| Kibana — las vistas se cargan con `./scripts/kibana-import.sh` | http://localhost:5601 |
+| SQS — cola de entrega y DLQ | http://localhost:9324 |
+| Prometheus — métricas en crudo | http://localhost:9091 |
 
 Las vistas de Kibana están versionadas en
-[`observability/kibana/vistas.ndjson`](../observability/kibana/vistas.ndjson): se cargan con
-un comando y no se pierden al recrear el contenedor. Quedan cinco en *Discover → Open*: todo
-el tráfico · entregas · llamadas a la API · solo errores · traza de un evento.
+[`observability/kibana/vistas.ndjson`](../observability/kibana/vistas.ndjson), de modo que no
+se pierden al recrear el contenedor. Son cinco, disponibles en *Discover → Open*: todo el
+tráfico, entregas, llamadas a la API, solo errores y traza de un evento.
 
-> Regenerar las imágenes del README necesita además el renderizador, que está en su propio
-> perfil (`--profile evidencia`). Levanta un Chromium con picos de memoria fuertes, y no
-> hace falta para una demostración.
+El renderizador de imágenes de Grafana está en un perfil aparte (`--profile evidencia`).
+Solo se necesita para regenerar las capturas de la documentación.
 
-### Cómo llega el dato a cada consola
+### Flujo de los datos
 
-La aplicación **no le envía métricas a nadie**: las publica en `/actuator/prometheus`, que es
-una foto del instante. Prometheus **va y consulta ese endpoint cada 5 segundos, y guarda cada
-lectura** —como un lector de medidor que pasa a anotar la cifra, en vez de que el medidor lo
-llame—. Grafana no habla con la aplicación: le pregunta a Prometheus, que tiene el histórico.
+La aplicación no envía métricas a ningún destino: las publica en `/actuator/prometheus`, que
+refleja el estado en el instante de la consulta. Prometheus consulta ese endpoint cada cinco
+segundos y almacena cada lectura, construyendo el histórico. Grafana consulta a Prometheus, no
+a la aplicación.
 
-Con los logs es al revés en el último tramo: la aplicación escribe JSON, **Filebeat lo lee y
-lo envía** a Elasticsearch, y Kibana consulta ahí.
+Con los logs el último tramo se invierte: la aplicación escribe JSON en formato ECS, Filebeat
+lo lee y lo envía a Elasticsearch, y Kibana consulta el índice.
 
-En los dos casos **la aplicación no conoce el destino final**. Por eso cambiar Prometheus por
-Datadog no toca una línea de código: el agente de Datadog consulta el mismo endpoint. Está
-cableado y apagado por defecto porque necesita cuenta y API key.
+En ambos casos la aplicación desconoce el destino final. Por eso sustituir Prometheus por
+Datadog no requiere modificar el código: el agente de Datadog consulta el mismo endpoint. La
+integración con Datadog está implementada y desactivada por defecto, ya que requiere cuenta y
+clave de API.
 
-### Los paneles
+### Paneles del tablero
 
-| Panel | Para qué sirve |
+| Panel | Función |
 |---|---|
-| Entregadas · Fallidas | El resultado neto |
-| **Reintentos exitosos** | Las que fallaron y se recuperaron solas. Sin reintentos, perdidas |
-| **Reintentos agotados** | Las que fallaron hasta el final. Requieren intervención |
-| Reenvíos manuales | Si crece, algo estructural está roto |
-| **Errores por código** | Un 5xx es transitorio; un 4xx es contrato roto |
-| **Latencia del webhook** | p50 · p95 · p99. Lo primero que se degrada, antes de los timeouts |
-| A la primera vs. recuperadas | Si las recuperadas crecen, los destinos se degradan aunque el resultado siga bien |
-| **Clientes con entregas fallando** | **Qué** cliente se cayó, no solo cuántas fallaron |
-| **Sin respuesta del cliente** | Timeouts y conexiones rechazadas: el destino ni contestó |
-| Tiempo de respuesta promedio | La tendencia general, al lado de los percentiles |
+| Entregadas · Fallidas | Resultado neto |
+| Reintentos exitosos | Entregas recuperadas por el backoff. Cuantifican el valor de la estrategia de reintentos |
+| Reintentos agotados | Entregas fallidas de forma definitiva. Requieren intervención |
+| Reenvíos manuales | Un crecimiento sostenido indica un problema estructural |
+| Errores por código | Un 5xx es transitorio; un 4xx indica contrato incumplido |
+| Latencia del webhook | p50, p95 y p99. Es el primer indicador que se degrada, antes de los timeouts |
+| A la primera frente a recuperadas | El crecimiento de las recuperadas indica degradación de los destinos aunque el resultado final se mantenga |
+| Clientes con entregas fallando | Identifica el cliente afectado, no solo el volumen de fallos |
+| Sin respuesta del cliente | Timeouts y conexiones rechazadas: el destino no respondió |
+| Tiempo de respuesta promedio | Tendencia general, complementaria a los percentiles |
 
-### Sobre `client_id` como etiqueta
+### Uso de `client_id` como etiqueta
 
-**Solo una métrica lo lleva**, `cobre_notification_client_failures_total`, y es deliberado en
-los dos sentidos.
+Una sola métrica lo incluye: `cobre_notification_client_failures_total`. La decisión responde
+a dos restricciones opuestas.
 
-Etiquetar *todas* las métricas por cliente multiplica las series de tiempo por el número de
-clientes. Con miles, eso tumba a Prometheus, y en Datadog cada combinación se factura.
+Etiquetar todas las métricas por cliente multiplica el número de series temporales por el
+número de clientes. A escala de miles compromete a Prometheus, y en Datadog cada combinación
+de etiquetas se factura.
 
-Pero no tenerlo en *ninguna* deja a guardia sin poder responder la primera pregunta de un
-incidente: **¿qué cliente se cayó?** Habría que ir a los logs, más lento justo cuando el
-tiempo importa, y no se podría alertar automáticamente.
+No incluirlo en ninguna métrica impide responder de forma automática la primera pregunta de un
+incidente: qué cliente está afectado. Obligaría a consultar los logs y no permitiría definir
+alertas.
 
-La salida es acotarlo al fallo. **La serie solo nace cuando un cliente falla**, así que la
-cota no son todos los clientes: son los que están fallando ahora, que en un sistema sano son
-unos pocos. Con eso se monta la alerta que importa —*"CLIENT002 lleva 5 minutos fallando"*— y
-guardia sabe a quién llamar sin abrir Kibana.
+La solución adoptada acota la etiqueta a la métrica de fallo. La serie se crea únicamente
+cuando un cliente registra un fallo, de modo que la cardinalidad no la determina el total de
+clientes sino los que presentan fallos en ese momento. Con esa métrica es posible definir una
+alerta del tipo «CLIENT002 acumula cinco minutos de fallos» y escalarla al equipo
+correspondiente.
 
 ---
 
 ## Aislamiento entre clientes
 
-`EVT005` es de `CLIENT003`. Con un token de `CLIENT002`:
+`EVT005` pertenece a `CLIENT003`. Consultado con un token de `CLIENT002`:
 
 ```bash
 curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer $TOKEN" \
@@ -250,8 +260,9 @@ curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer $TOKEN" \
 # 404
 ```
 
-**404 y no 403.** Un 403 confirmaría que el recurso existe y permitiría enumerar
-identificadores ajenos. Hacia afuera, "no existe" y "no es tuyo" son indistinguibles.
+La respuesta es 404 y no 403. Un 403 confirmaría la existencia del recurso y permitiría
+enumerar identificadores ajenos. Hacia el exterior, «no existe» y «no pertenece al
+solicitante» son indistinguibles.
 
-El `client_id` sale siempre del token, nunca de la ruta ni de la query: no hay ningún
-parámetro que permita expresar "los datos de otro".
+El `client_id` se obtiene siempre del token, nunca de la ruta ni de la query. No existe ningún
+parámetro que permita expresar una consulta sobre los datos de otro cliente.

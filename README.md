@@ -1,9 +1,9 @@
 # notification-delivery-service
 
-Entrega notificaciones de eventos a los webhooks de los clientes —con reintentos, firma y
-bitácora— y expone una API para que el cliente consulte y reenvíe las suyas.
+Servicio de entrega de notificaciones de eventos a webhooks de clientes, con reintentos,
+firma HMAC y bitácora de intentos. Expone una API self-service de consulta y reenvío.
 
-Prueba técnica para **Cobre**.
+Prueba técnica para Cobre.
 
 ```
 GET  /notification_events              listado con filtros y paginación
@@ -38,38 +38,49 @@ flowchart LR
     API -.->|encola reenvío| Q
 ```
 
-**Worker y API son despliegues independientes.** El worker aguanta toda la carga que genere
-la plataforma; la API, la que generen las personas. Escalar uno no debería obligar a pagar
-réplicas del otro. La misma imagen arranca como uno u otro según `COBRE_ROLE`.
+### Worker y API son despliegues independientes
 
-**Kafka es el bus** —la plataforma publica ahí y cualquier servicio lee, sin borrar al leer—
-y **SQS es la cola de trabajo**. Se separan porque el paralelismo de Kafka lo topan las
-particiones, mientras que en SQS cada consumidor toma el siguiente mensaje libre. Además SQS
-trae de fábrica lo que la entrega necesita: retardo por mensaje (el backoff) y DLQ.
+La carga del worker la determina el volumen de eventos de la plataforma; la de la API, el
+uso que hagan las personas. Son magnitudes distintas y evolucionan por separado, de modo que
+escalar una no debe obligar a provisionar réplicas de la otra. La misma imagen arranca en uno
+u otro rol según la variable `COBRE_ROLE`.
 
-En local son **Redpanda** y **ElasticMQ**: mismos protocolos, así que el código es idéntico
-al que correría contra Confluent Cloud y AWS.
+### Kafka como bus, SQS como cola de trabajo
+
+Kafka transporta los eventos que publica la plataforma. No elimina el mensaje al leerlo, por
+lo que varios servicios pueden consumir el mismo evento de forma independiente.
+
+SQS contiene el trabajo pendiente de entrega. Se emplea para esta etapa por dos razones: el
+paralelismo en Kafka está limitado por el número de particiones, mientras que en SQS cada
+consumidor toma el siguiente mensaje disponible; y SQS ofrece de forma nativa el retardo por
+mensaje que implementa el backoff (`DelaySeconds`) y la cola de mensajes no entregados (DLQ).
+
+En entorno local se usan Redpanda y ElasticMQ, que implementan los mismos protocolos. El
+código es idéntico al que se ejecutaría contra Confluent Cloud y AWS; solo cambian las
+direcciones de conexión.
 
 ---
 
-## 2. Hexagonal
+## 2. Arquitectura hexagonal
 
 ```
-domain/          modelo puro · CERO imports de framework
+domain/          modelo puro, sin dependencias de framework
 application/     port/in · port/out · casos de uso
 infrastructure/  adaptadores: REST · Kafka · SQS · R2DBC · WebClient · Micrometer
 ```
 
-Las dependencias apuntan **siempre hacia adentro**. `domain` y `application` no importan una
-sola clase de Spring; el cableado vive en `infrastructure/config`.
+Las dependencias apuntan siempre hacia el interior. Los paquetes `domain` y `application` no
+importan ninguna clase de Spring; el cableado reside en `infrastructure/config`.
 
-**Cómo se comprueba:** las pruebas del dominio y de los casos de uso corren sin contexto de
-Spring, sin base de datos y sin broker. **Qué compró:** se cambió RabbitMQ por Kafka + SQS
-sin tocar una línea del dominio ni de los casos de uso.
+La consecuencia verificable es que las pruebas del dominio y de los casos de uso se ejecutan
+sin contexto de Spring, sin base de datos y sin broker.
+
+El efecto práctico quedó demostrado durante el desarrollo: la sustitución de RabbitMQ por
+Kafka y SQS no requirió modificar el dominio ni los casos de uso, solo los adaptadores.
 
 ---
 
-## 3. Los cuatro escenarios
+## 3. Escenarios
 
 ### 3.1 Entrega exitosa
 
@@ -86,21 +97,26 @@ sequenceDiagram
     K->>W: consume
     W->>DB: guarda (idempotente por event_id)
     W->>Q: encola la entrega
-    Note over W,K: recién ahora confirma el offset
+    Note over W,K: confirma el offset
     Q->>W: entrega el mensaje
-    W->>DB: ¿suscripción activa?
+    W->>DB: verifica suscripción activa
     W->>C: POST + firma HMAC
     C-->>W: 200
     W->>DB: completed · registra el intento
-    W->>Q: borra el mensaje (= confirmar)
+    W->>Q: borra el mensaje (confirmación)
 ```
 
-El offset de Kafka se confirma **después** de persistir, y el mensaje de SQS se borra
-**después** de entregar. Si el proceso muere a mitad, el evento se reentrega: preferimos que
-llegue dos veces —la ingesta es idempotente y cada entrega lleva `X-Cobre-Event-Id` para que
-el cliente descarte repetidos— a que un pago no se notifique nunca.
+El offset de Kafka se confirma después de persistir el evento, y el mensaje de SQS se elimina
+después de completar la entrega. Si el proceso termina de forma abrupta en un punto
+intermedio, el evento se reentrega.
 
-### 3.2 Con reintentos, recuperada
+La garantía es, por tanto, de entrega **al menos una vez**: una notificación puede llegar
+duplicada al cliente. La alternativa —confirmar antes de procesar— produciría pérdida
+silenciosa de eventos, que en notificaciones de pagos tiene mayor impacto que un duplicado.
+El duplicado se acota por dos vías: la ingesta es idempotente por `event_id`, y cada entrega
+incluye la cabecera `X-Cobre-Event-Id` para que el receptor descarte repeticiones.
+
+### 3.2 Entrega recuperada tras reintentos
 
 ```mermaid
 sequenceDiagram
@@ -114,16 +130,19 @@ sequenceDiagram
     W->>Q: reencola con DelaySeconds ≈ 3s
     Note over W: retrying · intento registrado
 
-    Q->>W: intento 2 (3.2s después)
+    Q->>W: intento 2 (3,2 s después)
     W->>C: POST
     C-->>W: 200
     W->>Q: borra el mensaje
     Note over W: completed en el intento 2
 ```
 
-Las esperas crecen —**5s · 30s · 2m · 10m · 15m**, tope de `DelaySeconds` en SQS— y llevan
-**jitter**: un porcentaje aleatorio que las desordena. Sin él, los 200 pendientes de un
-cliente que se cayó reintentarían en el mismo segundo y volverían a tumbarlo.
+Los escalones de espera son 5s, 30s, 2m, 10m y 15m. El último coincide con el máximo que
+admite `DelaySeconds` en SQS.
+
+Cada espera incorpora un componente aleatorio (*jitter*) de hasta el 20 %. Sin él, todas las
+notificaciones acumuladas durante la caída de un destino se reintentarían en el mismo
+instante, generando un pico de carga sobre un sistema que acaba de restablecerse.
 
 ### 3.3 Reintentos agotados
 
@@ -143,11 +162,11 @@ sequenceDiagram
     Note over W: failed · habilitado para reenvío manual
 ```
 
-No se pierde nada: el evento queda en `failed` con toda su bitácora y el mensaje va a la
-**DLQ** (*dead letter queue*), que es una bandeja de revisión, no un basurero.
+El evento queda en estado `failed` con su bitácora completa y el mensaje se deriva a la DLQ
+(*dead letter queue*) para inspección. Ninguna información se descarta.
 
-Un 4xx no llega aquí: es fallo **permanente** y no se reintenta, porque insistir daría el
-mismo 4xx.
+Las respuestas 4xx no llegan a este escenario: se clasifican como fallo permanente y no se
+reintentan, dado que la repetición produciría el mismo resultado.
 
 ### 3.4 Reenvío manual
 
@@ -162,23 +181,23 @@ sequenceDiagram
     U->>API: POST /oauth/token
     API-->>U: access_token
     U->>API: POST /notification_events/{id}/replay
-    API->>DB: ¿es suyo? ¿está en failed?
+    API->>DB: valida propiedad y estado failed
     API->>DB: reinicia el ciclo · replay_count + 1
     API->>Q: encola
     API-->>U: 202 Accepted
-    Q->>W: el worker entrega como siempre
+    Q->>W: el worker entrega con el flujo habitual
 ```
 
-**202 y no 200**: quedó encolado, no entregado. La bitácora es append-only — el reenvío no
-borra los intentos anteriores.
+La respuesta es 202 y no 200: la solicitud queda encolada, no entregada. La bitácora es de
+solo adición, por lo que el reenvío conserva los intentos del ciclo anterior.
 
 ---
 
 ## 4. Evidencia
 
-### Una notificación completa, en los logs
+### Traza de una notificación en los logs
 
-Evento que falló y se recuperó. **Seis líneas, no sesenta:**
+Evento que falla en el primer intento y se entrega en el segundo:
 
 ```
 17:24:34.167            DEBUG        Evento EVT-RECUPERA-README del cliente CLIENT001 aceptado y encolado
@@ -188,23 +207,26 @@ Evento que falló y se recuperó. **Seis líneas, no sesenta:**
 17:24:37.240            INFO         Notificacion EVT-RECUPERA-README entregada al cliente CLIENT001 en el intento 2
 ```
 
-`PT3.234S` es cómo Java escribe 3,234 segundos; ese decimal es el jitter. Cada línea lleva
-`event_id`, `client_id` y `request_id` como campos indexados. **El `content` nunca se
-registra**: es dato financiero del cliente.
+`PT3.234S` es la representación ISO-8601 de 3,234 segundos; el decimal corresponde al jitter.
 
-### Los logs en Kibana
+Cada línea incluye `event_id`, `client_id` y `request_id` como campos indexados, lo que
+permite reconstruir el ciclo completo con una sola consulta. El campo `content` de la
+notificación no se registra, por tratarse de información financiera del cliente.
+
+### Logs en Kibana
 
 ![Logs en Kibana](docs/img/kibana-logs.png)
 
-### Las métricas en Grafana
+### Métricas en Grafana
 
 ![Tablero de Grafana](docs/img/grafana-tablero.png)
 
-Lo que importa mirar: **reintentos exitosos** (los que se recuperaron solos — el número que
-justifica toda la estrategia), **reintentos agotados** (los que requieren intervención) y
-**clientes con entregas fallando** (qué cliente se cayó, para avisarle).
+Los indicadores principales son *reintentos exitosos* (entregas recuperadas por el backoff,
+que cuantifican el valor de la estrategia de reintentos), *reintentos agotados* (casos que
+requieren intervención) y *clientes con entregas fallando* (identificación del cliente
+afectado para notificar a su equipo).
 
-### La bitácora que devuelve la API
+### Bitácora devuelta por la API
 
 ```json
 {
@@ -220,38 +242,38 @@ justifica toda la estrategia), **reintentos agotados** (los que requieren interv
 
 ### Pruebas
 
-**196 pruebas, 0 fallos.** Cobertura **94.5% instrucciones / 94.6% líneas**; el build falla
-si baja del 90%.
+196 pruebas, sin fallos. Cobertura del 94,5 % de instrucciones y 94,6 % de líneas. El build
+falla si la cobertura desciende del 90 %.
 
 ---
 
-## 5. Cómo correr
+## 5. Ejecución
+
+Requisitos: Docker y Java 21. No es necesario instalar Gradle.
 
 ```bash
-# 1. Secreto. La aplicación NO arranca sin él, a propósito.
+# 1. Secreto de firma de tokens. La aplicación no arranca sin él.
 cp .env.example .env
-openssl rand -base64 48          # pega el resultado en JWT_SECRET
+openssl rand -base64 48          # asignar el resultado a JWT_SECRET
 set -a; source .env; set +a
 
-# 2. Postgres, Kafka (Redpanda) y SQS (ElasticMQ)
+# 2. PostgreSQL, Kafka (Redpanda) y SQS (ElasticMQ)
 docker compose up -d
 
-# 3. Un receptor que hace de cliente y verifica la firma
+# 3. Receptor de webhooks de prueba: simula el sistema del cliente y verifica la firma
 python3 scripts/webhook-receiver.py
 
-# 4. La aplicación
+# 4. Aplicación
 SPRING_PROFILES_ACTIVE=local ./gradlew bootRun
 
-# 5. Disparar una notificación
+# 5. Publicación de un evento
 ./scripts/publish-event.sh EVT-DEMO-1 CLIENT001 credit_transfer "Transferencia por 1.500.000"
 ```
 
-Requisitos: Docker y Java 21. Gradle no hace falta instalarlo.
+El perfil `local` reduce los escalones de reintento y admite destinos HTTP en `localhost`.
+En cualquier otro perfil se exige HTTPS y se bloquean las direcciones internas.
 
-El perfil `local` acorta los reintentos y permite HTTP hacia `localhost`. **En cualquier
-otro perfil se exige HTTPS y se bloquean destinos internos.**
-
-Las consolas (Grafana, Kibana, Prometheus) se levantan con
+Las consolas de observabilidad se levantan con
 `docker compose --profile observability up -d`.
 
 ---
@@ -260,22 +282,24 @@ Las consolas (Grafana, Kibana, Prometheus) se levantan con
 
 | Documento | Contenido |
 |---|---|
-| [Diseño del sistema](docs/01-diseno-del-sistema.md) | **Task 1** — escalabilidad, resiliencia, despliegue |
-| [Seguridad OWASP](docs/02-seguridad-owasp.md) | **Task 3** — 5 vulnerabilidades con su mitigación |
-| [Guía de uso](docs/03-guia-de-uso.md) | Registrar webhooks · tokens · Postman · consolas · el receptor de pruebas |
+| [Diseño del sistema](docs/01-diseno-del-sistema.md) | Task 1 — escalabilidad, resiliencia, despliegue |
+| [Seguridad OWASP](docs/02-seguridad-owasp.md) | Task 3 — vulnerabilidades identificadas y mitigaciones |
+| [Guía de uso](docs/03-guia-de-uso.md) | Registro de webhooks, tokens, Postman, consolas, receptor de pruebas |
 
 ---
 
 ## 7. Limitaciones conocidas
 
-1. **Sin circuit breaker por cliente.** Un webhook caído horas sigue gastando intentos.
-2. **El rate limit es por instancia**, no global. Contiene el abuso accidental, no el
-   deliberado. En AWS este control pertenece al WAF.
-3. **Sin pruebas de integración con infraestructura real.** El paso pendiente es
-   Testcontainers.
-4. **El secreto de firma del webhook está en texto plano en la base.** No puede hashearse
-   porque hay que usarlo para firmar; la mitigación es cifrarlo con KMS.
-5. **La DLQ no tiene reproceso automático** ni alarma por profundidad.
+1. **No hay circuit breaker por cliente.** Un destino caído durante horas continúa
+   consumiendo intentos en cada evento.
+2. **El límite de tasa es por instancia**, no global. Contiene el abuso accidental pero no el
+   deliberado. En un despliegue en AWS este control corresponde al WAF.
+3. **No hay pruebas de integración con infraestructura real.** Los adaptadores de
+   persistencia y el cableado de beans quedan fuera del umbral de cobertura. El paso
+   pendiente es Testcontainers.
+4. **El secreto de firma del webhook se almacena en texto plano.** No admite hash porque debe
+   usarse para calcular el HMAC de cada entrega. La mitigación es cifrarlo con KMS.
+5. **La DLQ no dispone de reproceso automático** ni de alarma por profundidad de cola.
 
 ---
 
