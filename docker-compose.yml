@@ -81,5 +81,38 @@ services:
       # Los logs que escribe la aplicacion corriendo en el host.
       - ./logs:/app-logs:ro
 
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: cobre-notifications-prometheus
+    profiles: ["observability"]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=6h
+    ports:
+      # 9091 y no 9090: el receptor de webhooks de la demo ya usa ese puerto.
+      - "${PROMETHEUS_PORT:-9091}:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    extra_hosts:
+      # La aplicacion corre en el host, no en un contenedor.
+      - "host.docker.internal:host-gateway"
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    container_name: cobre-notifications-grafana
+    profiles: ["observability"]
+    depends_on: [prometheus]
+    environment:
+      # Sin login: es un entorno local desechable y en una demostracion no se pierde
+      # tiempo escribiendo credenciales.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+
 volumes:
   postgres-data:

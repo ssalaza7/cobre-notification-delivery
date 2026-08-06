@@ -430,6 +430,28 @@ insistir no la va a arreglar.
 
 ## Observabilidad
 
+### Consolas para la demostración
+
+```bash
+docker compose --profile observability up -d
+```
+
+| Consola | URL | Qué mostrar |
+|---|---|---|
+| **Grafana** | http://localhost:3000 | Tablero *Entrega de notificaciones*: entregadas, fallidas, reintentos, latencia del webhook y backlog |
+| **Kibana** | http://localhost:5602 | La traza completa de una notificación, filtrando por `event_id` o `client_id` |
+| **RabbitMQ** | http://localhost:15672 | Las colas de retardo y la DLQ. `guest`/`guest` |
+| **Prometheus** | http://localhost:9091 | Las métricas en crudo, si alguien pregunta de dónde salen |
+
+**Kibana pide un paso la primera vez:** ☰ → *Stack Management* → *Data Views* → *Create*,
+patrón `cobre-notifications-*`, campo de tiempo `@timestamp`. Después, *Discover*.
+
+Grafana ya viene con la fuente de datos y el tablero cargados: se abre y funciona.
+
+> **Sobre Datadog.** Está cableado pero apagado, porque necesita cuenta y API key. Grafana
+> muestra exactamente las mismas métricas: el `MetricsPort` publica una sola vez y
+> Micrometer alimenta a los registries activos. Cambiar de uno a otro es configuración.
+
 ### Logs estructurados en Kibana
 
 ```bash

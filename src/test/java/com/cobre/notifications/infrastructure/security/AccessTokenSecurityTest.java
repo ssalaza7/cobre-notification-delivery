@@ -32,7 +32,7 @@ class AccessTokenSecurityTest {
     private static SecurityProperties properties(int tokenPerMinute) {
         return new SecurityProperties(
                 new SecurityProperties.Jwt(SECRET, Duration.ofMinutes(30), "emisor-de-pruebas"),
-                new SecurityProperties.RateLimit(true, 120, tokenPerMinute));
+                new SecurityProperties.RateLimit(true, 120, tokenPerMinute), false);
     }
 
     @Nested
@@ -196,7 +196,7 @@ class AccessTokenSecurityTest {
             TokenRateLimitWebFilter filter = new TokenRateLimitWebFilter(
                     new SecurityProperties(
                             new SecurityProperties.Jwt(SECRET, null, null),
-                            new SecurityProperties.RateLimit(false, 120, 1)),
+                            new SecurityProperties.RateLimit(false, 120, 1), false),
                     Clock.fixed(NOW, ZoneOffset.UTC));
 
             for (int i = 0; i < 5; i++) {

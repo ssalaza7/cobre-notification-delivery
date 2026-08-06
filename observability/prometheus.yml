@@ -1,0 +1,15 @@
+# Prometheus local: raspa las metricas del servicio cada 5 segundos para que un panel
+# se mueva en vivo durante una demostracion. En produccion el intervalo tipico es 15s
+# o 30s y quien raspa es el agente de Datadog.
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: notification-delivery-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      # host.docker.internal: la aplicacion corre en el host, no en un contenedor.
+      - targets: ["host.docker.internal:8080"]
+        labels:
+          service: notification-delivery-service

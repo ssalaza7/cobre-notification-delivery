@@ -1,19 +1,30 @@
-# Carga tambien las credenciales de demostracion, que no existen en produccion.
+# Perfil de desarrollo y demostracion local.
+#
+# Apunta los webhooks a un receptor HTTP en localhost y acorta los retardos de reintento
+# para poder verlos completos mientras se explican.
 spring:
   flyway:
+    # Carga tambien las credenciales de demostracion, que no existen en produccion.
     locations: classpath:db/migration,classpath:db/demo
 
-# Perfil de demo local: permite apuntar los webhooks a un receptor HTTP en localhost
-# y acorta los retardos de reintento para poder verlos completos en una demostracion.
 cobre:
   webhook:
     require-https: false
     block-internal-addresses: false
+
   retry:
-    # Tres intentos en ~10 segundos: alcanza a agotarse mientras se explica, y sigue
-    # siendo backoff exponencial con jitter de verdad.
+    # Tres intentos en unos diez segundos: alcanza a agotarse mientras se explica, y
+    # sigue siendo backoff exponencial con jitter de verdad.
     max-attempts: 3
     delays: 3s, 6s, 10s
+
+  security:
+    # Solo en local: deja /actuator/prometheus sin token, para que Prometheus lo raspe y
+    # se pueda abrir en el navegador durante una demostracion.
+    #
+    # En cualquier otro perfil exige el scope notifications:monitor, y en produccion lo
+    # correcto ademas es moverlo a un puerto de gestion que no se publique a internet.
+    open-metrics: true
 
 logging:
   level:

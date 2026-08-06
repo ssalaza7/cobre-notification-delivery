@@ -53,20 +53,33 @@ public class SecurityConfig {
     private static final String SCOPE_MONITOR = "SCOPE_notifications:monitor";
 
     @Bean
-    SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http, RateLimitWebFilter rateLimitFilter) {
+    SecurityWebFilterChain securityWebFilterChain(
+            ServerHttpSecurity http, RateLimitWebFilter rateLimitFilter, SecurityProperties properties) {
+
         return http
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)
                 .httpBasic(ServerHttpSecurity.HttpBasicSpec::disable)
                 .formLogin(ServerHttpSecurity.FormLoginSpec::disable)
-                .authorizeExchange(exchanges -> exchanges
-                        // Unico endpoint publico: es donde el cliente prueba su
-                        // identidad, asi que no puede exigir identidad previa.
-                        .pathMatchers(HttpMethod.POST, "/oauth/token").permitAll()
-                        .pathMatchers("/actuator/health/**", "/actuator/info").permitAll()
-                        .pathMatchers("/actuator/**").hasAuthority(SCOPE_MONITOR)
-                        .pathMatchers(HttpMethod.POST, "/notification_events/*/replay").hasAuthority(SCOPE_REPLAY)
-                        .pathMatchers(HttpMethod.GET, "/notification_events/**").hasAuthority(SCOPE_READ)
-                        .anyExchange().denyAll())
+                .authorizeExchange(exchanges -> {
+                    // Unico endpoint publico: es donde el cliente prueba su identidad,
+                    // asi que no puede exigir identidad previa.
+                    exchanges.pathMatchers(HttpMethod.POST, "/oauth/token").permitAll()
+                            .pathMatchers("/actuator/health/**", "/actuator/info").permitAll();
+
+                    // Solo en local: deja las metricas abiertas para que Prometheus las
+                    // raspe y se puedan abrir en el navegador durante una demostracion.
+                    // En cualquier otro perfil caen en la regla de abajo y exigen scope.
+                    if (properties.openMetrics()) {
+                        exchanges.pathMatchers("/actuator/prometheus").permitAll();
+                    }
+
+                    exchanges.pathMatchers("/actuator/**").hasAuthority(SCOPE_MONITOR)
+                            .pathMatchers(HttpMethod.POST, "/notification_events/*/replay")
+                                    .hasAuthority(SCOPE_REPLAY)
+                            .pathMatchers(HttpMethod.GET, "/notification_events/**")
+                                    .hasAuthority(SCOPE_READ)
+                            .anyExchange().denyAll();
+                })
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
                 // El limitador va despues de la autorizacion: solo tiene sentido contar
                 // peticiones de clientes ya identificados.

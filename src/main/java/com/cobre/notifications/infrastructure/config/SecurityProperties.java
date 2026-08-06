@@ -11,7 +11,19 @@ import java.time.Duration;
  * @param rateLimit control de abuso por cliente
  */
 @ConfigurationProperties(prefix = "cobre.security")
-public record SecurityProperties(Jwt jwt, RateLimit rateLimit) {
+public record SecurityProperties(Jwt jwt, RateLimit rateLimit, boolean openMetrics) {
+
+    /**
+     * Deja {@code /actuator/prometheus} sin autenticacion.
+     *
+     * <p>Falso por defecto: un endpoint de metricas abierto entrega el mapa operativo del
+     * sistema. Solo se activa en el perfil local, para que Prometheus lo raspe y se pueda
+     * abrir en el navegador durante una demostracion. En produccion, ademas del scope,
+     * lo correcto es moverlo a un puerto de gestion que no se publique a internet.
+     */
+    public boolean openMetrics() {
+        return openMetrics;
+    }
 
     /**
      * @param secret   clave HS256. Debe tener al menos 32 bytes; en produccion se

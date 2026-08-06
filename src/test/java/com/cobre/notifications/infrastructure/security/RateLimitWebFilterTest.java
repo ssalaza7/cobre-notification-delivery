@@ -38,7 +38,7 @@ class RateLimitWebFilterTest {
         return new RateLimitWebFilter(
                 new SecurityProperties(
                         new SecurityProperties.Jwt("secreto-de-pruebas-de-al-menos-32-bytes", null, null),
-                        new SecurityProperties.RateLimit(enabled, perMinute, 10)),
+                        new SecurityProperties.RateLimit(enabled, perMinute, 10), false),
                 clock);
     }
 
