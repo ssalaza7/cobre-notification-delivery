@@ -442,6 +442,10 @@ obliga a rotarlo.
 docker compose --profile observability up -d
 ```
 
+> Regenerar las imágenes de este README necesita además el renderizador, que está en su
+> propio perfil (`--profile evidencia`). Levanta un Chromium con picos de memoria fuertes
+> al renderizar, y no hace falta para nada durante una demostración.
+
 | Consola | URL |
 |---|---|
 | **Grafana** — el tablero ya viene cargado | http://localhost:3000 |

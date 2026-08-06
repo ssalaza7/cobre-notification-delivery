@@ -125,18 +125,24 @@ services:
       # La aplicacion corre en el host, no en un contenedor.
       - "host.docker.internal:host-gateway"
 
-  # Renderiza paneles como PNG. Existe para poder generar las evidencias del README
-  # con un comando en vez de tomar capturas a mano, que envejecen sin que nadie lo note.
+  # Renderiza paneles como PNG. Existe para regenerar las evidencias del README con un
+  # comando, en vez de tomar capturas a mano que envejecen sin que nadie lo note.
+  #
+  # Perfil propio a proposito: levanta un Chromium que al renderizar a resolucion alta
+  # pega picos de memoria fuertes. No hace falta para la demostracion, solo para producir
+  # las imagenes, asi que no debe estar corriendo mientras se presenta.
+  #
+  #   docker compose --profile evidencia up -d grafana-renderer
   grafana-renderer:
     image: grafana/grafana-image-renderer:3.11.6
     container_name: cobre-notifications-grafana-renderer
-    profiles: ["observability"]
+    profiles: ["evidencia"]
 
   grafana:
     image: grafana/grafana:11.3.1
     container_name: cobre-notifications-grafana
     profiles: ["observability"]
-    depends_on: [prometheus, grafana-renderer]
+    depends_on: [prometheus]
     environment:
       GF_RENDERING_SERVER_URL: http://grafana-renderer:8081/render
       GF_RENDERING_CALLBACK_URL: http://grafana:3000/
