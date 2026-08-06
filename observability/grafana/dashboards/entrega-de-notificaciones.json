@@ -1,64 +1,64 @@
 {
   "uid": "cobre-notificaciones",
   "title": "Entrega de notificaciones",
-  "description": "Lo que vigilaria el equipo de monitoreo: si las entregas estan saliendo, cuanto tardan los webhooks de los clientes y si algo se esta acumulando sin drenarse.",
+  "description": "Lo que vigilaria el equipo de monitoreo: si las entregas estan saliendo, cuantas se recuperan gracias a los reintentos, con que codigos rechazan los destinos y cuanto tardan en responder.",
   "timezone": "browser",
   "refresh": "5s",
-  "time": { "from": "now-15m", "to": "now" },
+  "time": { "from": "now-30m", "to": "now" },
   "panels": [
     {
       "type": "stat",
       "title": "Entregadas",
-      "description": "Notificaciones cerradas con exito.",
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
-      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "green" }, "unit": "short" } },
-      "targets": [{ "expr": "sum(cobre_notification_settled_total{status=\"completed\"})", "legendFormat": "entregadas" }]
+      "description": "Notificaciones cerradas con exito, con o sin reintentos de por medio.",
+      "gridPos": { "h": 4, "w": 5, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "green" } } },
+      "targets": [{ "expr": "sum(cobre_notification_settled_total{status=\"completed\"}) or vector(0)", "legendFormat": "entregadas" }]
     },
     {
       "type": "stat",
       "title": "Fallidas",
       "description": "Entregas que agotaron los reintentos o fallaron de forma permanente. Quedan disponibles para reenvio manual.",
-      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
-      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "red" }, "unit": "short" } },
-      "targets": [{ "expr": "sum(cobre_notification_settled_total{status=\"failed\"})", "legendFormat": "fallidas" }]
+      "gridPos": { "h": 4, "w": 5, "x": 5, "y": 0 },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "red" } } },
+      "targets": [{ "expr": "sum(cobre_notification_settled_total{status=\"failed\"}) or vector(0)", "legendFormat": "fallidas" }]
     },
     {
       "type": "stat",
-      "title": "Reintentos programados",
-      "description": "Un salto aqui sin un salto equivalente en fallidas significa que los destinos se estan degradando pero todavia se recuperan.",
-      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
-      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "orange" }, "unit": "short" } },
-      "targets": [{ "expr": "sum(cobre_notification_retry_scheduled_total)", "legendFormat": "reintentos" }]
+      "title": "Reintentos exitosos",
+      "description": "Notificaciones que fallaron al principio pero terminaron entregandose gracias al backoff. Es el valor que justifica toda la estrategia de reintentos: sin ella, estas se habrian perdido.",
+      "gridPos": { "h": 4, "w": 5, "x": 10, "y": 0 },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "yellow" } } },
+      "targets": [{ "expr": "sum(cobre_notification_settled_total{status=\"completed\", after_retries=\"true\"}) or vector(0)", "legendFormat": "recuperadas" }]
+    },
+    {
+      "type": "stat",
+      "title": "Reintentos agotados",
+      "description": "Notificaciones que se reintentaron hasta el final y aun asi no se pudieron entregar. Son las que requieren intervencion.",
+      "gridPos": { "h": 4, "w": 5, "x": 15, "y": 0 },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "orange" } } },
+      "targets": [{ "expr": "sum(cobre_notification_settled_total{status=\"failed\", after_retries=\"true\"}) or vector(0)", "legendFormat": "agotadas" }]
     },
     {
       "type": "stat",
       "title": "Reenvios manuales",
       "description": "Cuantas veces un cliente tuvo que pedir un reenvio. Si crece, algo estructural esta fallando.",
-      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
-      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "blue" }, "unit": "short" } },
-      "targets": [{ "expr": "sum(cobre_notification_replay_requested_total)", "legendFormat": "reenvios" }]
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "blue" } } },
+      "targets": [{ "expr": "sum(cobre_notification_replay_requested_total) or vector(0)", "legendFormat": "reenvios" }]
     },
     {
       "type": "timeseries",
-      "title": "Intentos de entrega por desenlace",
-      "description": "DELIVERED es lo normal. Un salto de RETRYABLE_FAILURE indica destinos degradados; uno de PERMANENT_FAILURE, contratos rotos que no se arreglan reintentando.",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
-      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 20, "lineWidth": 2 }, "unit": "reqps" } },
-      "targets": [{ "expr": "sum by (outcome) (rate(cobre_notification_delivery_attempts_total[1m]))", "legendFormat": "{{outcome}}" }]
-    },
-    {
-      "type": "timeseries",
-      "title": "Backlog por estado",
-      "description": "Pendientes y en reintento en este momento. Es el gauge que dispara la alerta cuando la cola crece mas rapido de lo que se drena.",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
-      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 20, "lineWidth": 2 }, "unit": "short" } },
-      "targets": [{ "expr": "cobre_notification_backlog", "legendFormat": "{{status}}" }]
+      "title": "Errores por codigo de respuesta",
+      "description": "Con que rechazan los destinos. Un 5xx es transitorio y se reintenta; un 4xx es un contrato roto y no se reintenta, porque insistir no lo arregla. 'sin_respuesta' son timeouts y conexiones rechazadas.",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 25, "lineWidth": 2, "stacking": { "mode": "normal" } }, "unit": "reqps" } },
+      "targets": [{ "expr": "sum by (http_status) (rate(cobre_notification_delivery_errors_total[1m]))", "legendFormat": "HTTP {{http_status}}" }]
     },
     {
       "type": "timeseries",
       "title": "Latencia del webhook del cliente",
-      "description": "Cuanto tarda en responder el destino. Es lo primero que se degrada antes de que empiecen los timeouts, asi que es la senal mas temprana.",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "description": "Cuanto tarda en responder el destino. Es lo primero que se degrada antes de que empiecen los timeouts, asi que es la senal mas temprana de que un cliente esta en problemas.",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 4 },
       "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10, "lineWidth": 2 }, "unit": "s" } },
       "targets": [
         { "expr": "histogram_quantile(0.50, sum by (le) (rate(cobre_notification_delivery_seconds_bucket[5m])))", "legendFormat": "p50" },
@@ -68,11 +68,23 @@
     },
     {
       "type": "timeseries",
-      "title": "Autenticacion",
-      "description": "Tokens emitidos frente a intentos rechazados. Un salto de rechazos sin emisiones equivalentes es alguien probando secretos.",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
-      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 20, "lineWidth": 2 }, "unit": "short" } },
-      "targets": [{ "expr": "sum by (result) (rate(cobre_auth_token_total[1m]))", "legendFormat": "{{result}}" }]
+      "title": "Intentos de entrega por desenlace",
+      "description": "DELIVERED es lo normal. Un salto de RETRYABLE_FAILURE indica destinos degradados que todavia se recuperan; uno de PERMANENT_FAILURE, contratos rotos que hay que avisarle al cliente.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 20, "lineWidth": 2 }, "unit": "reqps" } },
+      "targets": [{ "expr": "sum by (outcome) (rate(cobre_notification_delivery_attempts_total[1m]))", "legendFormat": "{{outcome}}" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Entregas cerradas: a la primera frente a recuperadas",
+      "description": "Si la franja de recuperadas crece, los destinos se estan degradando aunque el resultado final siga siendo bueno. Es una alerta temprana que el conteo de entregadas por si solo esconde.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 25, "lineWidth": 2, "stacking": { "mode": "normal" } }, "unit": "reqps" } },
+      "targets": [
+        { "expr": "sum(rate(cobre_notification_settled_total{status=\"completed\", after_retries=\"false\"}[1m]))", "legendFormat": "a la primera" },
+        { "expr": "sum(rate(cobre_notification_settled_total{status=\"completed\", after_retries=\"true\"}[1m]))", "legendFormat": "recuperadas con reintentos" },
+        { "expr": "sum(rate(cobre_notification_settled_total{status=\"failed\"}[1m]))", "legendFormat": "fallidas" }
+      ]
     }
   ]
 }

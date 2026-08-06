@@ -28,9 +28,9 @@ class MicrometerMetricsAdapterTest {
     @Test
     @DisplayName("cuenta los intentos separando exito de fallo y mide la latencia del webhook")
     void mide_los_intentos() {
-        adapter.deliveryAttempted("credit_transfer", AttemptOutcome.DELIVERED, 120);
-        adapter.deliveryAttempted("credit_transfer", AttemptOutcome.RETRYABLE_FAILURE, 5000);
-        adapter.deliveryAttempted("credit_transfer", AttemptOutcome.RETRYABLE_FAILURE, 4800);
+        adapter.deliveryAttempted("credit_transfer", AttemptOutcome.DELIVERED, 120, 200);
+        adapter.deliveryAttempted("credit_transfer", AttemptOutcome.RETRYABLE_FAILURE, 5000, 503);
+        adapter.deliveryAttempted("credit_transfer", AttemptOutcome.RETRYABLE_FAILURE, 4800, 503);
 
         assertThat(registry.counter("cobre.notification.delivery.attempts",
                 "event_type", "credit_transfer", "outcome", "DELIVERED").count()).isEqualTo(1);
@@ -42,15 +42,43 @@ class MicrometerMetricsAdapterTest {
     }
 
     @Test
-    @DisplayName("cuenta las entregas cerradas por estado final")
-    void cuenta_las_entregas_cerradas() {
-        adapter.deliverySettled("credit_transfer", DeliveryStatus.COMPLETED);
-        adapter.deliverySettled("credit_transfer", DeliveryStatus.FAILED);
+    @DisplayName("cuenta los errores por codigo de respuesta del destino")
+    void cuenta_los_errores_por_codigo() {
+        adapter.deliveryAttempted("credit_transfer", AttemptOutcome.RETRYABLE_FAILURE, 5000, 503);
+        adapter.deliveryAttempted("debit_purchase", AttemptOutcome.RETRYABLE_FAILURE, 4000, 503);
+        adapter.deliveryAttempted("credit_transfer", AttemptOutcome.PERMANENT_FAILURE, 80, 400);
+        // Timeout o conexion rechazada: no hay codigo que registrar.
+        adapter.deliveryAttempted("credit_transfer", AttemptOutcome.RETRYABLE_FAILURE, 5000, null);
 
-        assertThat(registry.counter("cobre.notification.settled",
-                "event_type", "credit_transfer", "status", "completed").count()).isEqualTo(1);
-        assertThat(registry.counter("cobre.notification.settled",
-                "event_type", "credit_transfer", "status", "failed").count()).isEqualTo(1);
+        assertThat(registry.counter("cobre.notification.delivery.errors", "http_status", "503").count())
+                .isEqualTo(2);
+        assertThat(registry.counter("cobre.notification.delivery.errors", "http_status", "400").count())
+                .isEqualTo(1);
+        assertThat(registry.counter("cobre.notification.delivery.errors", "http_status", "sin_respuesta").count())
+                .isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("una entrega exitosa no cuenta como error")
+    void una_entrega_exitosa_no_es_error() {
+        adapter.deliveryAttempted("credit_transfer", AttemptOutcome.DELIVERED, 120, 200);
+
+        assertThat(registry.find("cobre.notification.delivery.errors").counters()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("cuenta las entregas cerradas por estado final, separando las recuperadas")
+    void cuenta_las_entregas_cerradas() {
+        adapter.deliverySettled("credit_transfer", DeliveryStatus.COMPLETED, false);
+        adapter.deliverySettled("credit_transfer", DeliveryStatus.COMPLETED, true);
+        adapter.deliverySettled("credit_transfer", DeliveryStatus.FAILED, true);
+
+        assertThat(registry.counter("cobre.notification.settled", "event_type", "credit_transfer",
+                "status", "completed", "after_retries", "false").count()).isEqualTo(1);
+        assertThat(registry.counter("cobre.notification.settled", "event_type", "credit_transfer",
+                "status", "completed", "after_retries", "true").count()).isEqualTo(1);
+        assertThat(registry.counter("cobre.notification.settled", "event_type", "credit_transfer",
+                "status", "failed", "after_retries", "true").count()).isEqualTo(1);
     }
 
     @Test

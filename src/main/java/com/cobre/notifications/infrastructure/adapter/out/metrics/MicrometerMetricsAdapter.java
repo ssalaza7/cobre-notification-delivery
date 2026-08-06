@@ -44,6 +44,7 @@ public class MicrometerMetricsAdapter implements MetricsPort {
     private static final String INGESTED = "cobre.notification.ingested";
     private static final String BACKLOG = "cobre.notification.backlog";
     private static final String TOKENS = "cobre.auth.token";
+    private static final String ERRORS = "cobre.notification.delivery.errors";
 
     private final MeterRegistry registry;
     private final Map<DeliveryStatus, AtomicLong> backlog = new EnumMap<>(DeliveryStatus.class);
@@ -63,8 +64,16 @@ public class MicrometerMetricsAdapter implements MetricsPort {
     }
 
     @Override
-    public void deliveryAttempted(String eventType, AttemptOutcome outcome, long durationMs) {
+    public void deliveryAttempted(String eventType, AttemptOutcome outcome, long durationMs, Integer httpStatus) {
         registry.counter(ATTEMPTS, "event_type", eventType, "outcome", outcome.name()).increment();
+
+        // Errores por codigo de respuesta, sin event_type: el conjunto de codigos HTTP
+        // es acotado, pero multiplicarlo por los tipos de evento no lo seria.
+        // "sin_respuesta" cubre timeouts y conexiones rechazadas, que no traen codigo.
+        if (outcome.isFailure()) {
+            registry.counter(ERRORS, "http_status",
+                    httpStatus != null ? String.valueOf(httpStatus) : "sin_respuesta").increment();
+        }
         Timer.builder(DURATION)
                 .tag("event_type", eventType)
                 .tag("outcome", outcome.name())
@@ -74,8 +83,13 @@ public class MicrometerMetricsAdapter implements MetricsPort {
     }
 
     @Override
-    public void deliverySettled(String eventType, DeliveryStatus finalStatus) {
-        registry.counter(SETTLED, "event_type", eventType, "status", finalStatus.apiValue()).increment();
+    public void deliverySettled(String eventType, DeliveryStatus finalStatus, boolean afterRetries) {
+        registry.counter(SETTLED,
+                "event_type", eventType,
+                "status", finalStatus.apiValue(),
+                // Separa lo que salio a la primera de lo que se recupero con reintentos:
+                // una entrega recuperada indica un destino inestable aunque termine bien.
+                "after_retries", String.valueOf(afterRetries)).increment();
     }
 
     @Override

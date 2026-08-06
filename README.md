@@ -476,7 +476,7 @@ docker compose --profile observability up -d
 
 | Consola | URL | Qué mostrar |
 |---|---|---|
-| **Grafana** | http://localhost:3000 | Tablero *Entrega de notificaciones*: entregadas, fallidas, reintentos, latencia del webhook y backlog |
+| **Grafana** | http://localhost:3000 | Tablero *Entrega de notificaciones* (ver abajo) |
 | **Kibana** | http://localhost:5602 | La traza completa de una notificación, filtrando por `event_id` o `client_id` |
 | **RabbitMQ** | http://localhost:15672 | Las colas de retardo y la DLQ. `guest`/`guest` |
 | **Prometheus** | http://localhost:9091 | Las métricas en crudo, si alguien pregunta de dónde salen |
@@ -485,6 +485,26 @@ docker compose --profile observability up -d
 patrón `cobre-notifications-*`, campo de tiempo `@timestamp`. Después, *Discover*.
 
 Grafana ya viene con la fuente de datos y el tablero cargados: se abre y funciona.
+
+**Qué muestra el tablero**
+
+| Panel | Para qué sirve |
+|---|---|
+| Entregadas · Fallidas | El resultado neto |
+| **Reintentos exitosos** | Notificaciones que fallaron y se recuperaron con el backoff. Es el número que justifica toda la estrategia: sin reintentos se habrían perdido |
+| **Reintentos agotados** | Las que se reintentaron hasta el final y aun así fallaron. Requieren intervención |
+| Reenvíos manuales | Si crece, algo estructural está fallando |
+| **Errores por código de respuesta** | Con qué rechazan los destinos. Un 5xx es transitorio; un 4xx es contrato roto |
+| **Latencia del webhook** | p50, p95 y p99. Es lo primero que se degrada antes de los timeouts |
+| A la primera frente a recuperadas | Si la franja de recuperadas crece, los destinos se degradan aunque el resultado final siga siendo bueno |
+
+**Para poblarlo en la demostración**, el receptor decide según el identificador del evento:
+
+| El id contiene | Qué hace el destino |
+|---|---|
+| `FALLA` | Rechaza los 3 intentos: agota el ciclo |
+| `RECUPERA` | Rechaza 1 y luego acepta: entrega recuperada |
+| cualquier otra cosa | Acepta a la primera |
 
 > **Sobre Datadog.** Está cableado pero apagado, porque necesita cuenta y API key. Grafana
 > muestra exactamente las mismas métricas: el `MetricsPort` publica una sola vez y

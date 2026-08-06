@@ -4,8 +4,8 @@
 Imprime lo que llega, verifica la firma HMAC y permite forzar codigos de respuesta
 para ver el comportamiento de los reintentos sin depender de un servicio externo.
 
-Por defecto responde 200, salvo que el identificador del evento contenga "FALLA": esos
-fallan los primeros intentos y despues aceptan. Asi una misma instancia sirve para
+Por defecto responde 200. El identificador del evento decide el comportamiento:
+"FALLA" agota el ciclo de reintentos, "RECUPERA" falla una vez y luego acepta. Asi una misma instancia sirve para
 demostrar la entrega exitosa y el ciclo de reintentos sin reiniciar nada a mitad de una
 presentacion.
 
@@ -31,7 +31,8 @@ SECRETS = {
 }
 
 attempts_by_event = defaultdict(int)
-options = argparse.Namespace(status=200, fail_first=0, fail_pattern="FALLA", fail_times=3)
+options = argparse.Namespace(status=200, fail_first=0, fail_pattern="FALLA", fail_times=3,
+                             recover_pattern="RECUPERA", recover_after=1)
 
 
 def verify_signature(client_id: str, timestamp: str, signature: str, body: bytes) -> str:
@@ -90,7 +91,12 @@ def decide_status(event_id: str, intento: int) -> int:
     """
     if options.fail_first and intento <= options.fail_first:
         return 503
-    if options.fail_pattern and options.fail_pattern.upper() in event_id.upper():
+    id_mayus = event_id.upper()
+    # Se evalua primero el patron de recuperacion: falla poco y luego acepta, que es lo
+    # que produce una entrega recuperada gracias al backoff.
+    if options.recover_pattern and options.recover_pattern.upper() in id_mayus:
+        return 503 if intento <= options.recover_after else 200
+    if options.fail_pattern and options.fail_pattern.upper() in id_mayus:
         return 503 if intento <= options.fail_times else 200
     return options.status
 
@@ -103,6 +109,11 @@ def main() -> None:
                         help="Responde 503 los N primeros intentos de CUALQUIER evento")
     parser.add_argument("--fail-pattern", default="FALLA",
                         help="Los eventos cuyo id contenga este texto fallan sus primeros intentos")
+    parser.add_argument("--recover-pattern", default="RECUPERA",
+                        help="Los eventos con este texto en el id fallan poco y luego aceptan: "
+                             "producen una entrega recuperada por reintentos")
+    parser.add_argument("--recover-after", type=int, default=1,
+                        help="Cuantos intentos fallan los eventos que se recuperan")
     parser.add_argument("--fail-times", type=int, default=3,
                         help="Cuantos intentos fallan los eventos que coinciden con el patron. Por defecto 3, que es lo que agota el ciclo en el perfil local: asi el evento queda fallido y el reenvio manual -que abre un ciclo nuevo- si se entrega.")
     parser.parse_args(namespace=options)
@@ -110,8 +121,12 @@ def main() -> None:
     print(f"Receptor de webhooks escuchando en http://localhost:{options.port}/webhooks/<CLIENT_ID>",
           flush=True)
     if options.fail_pattern:
-        print(f"  Los eventos con '{options.fail_pattern}' en el id fallaran sus primeros "
-              f"{options.fail_times} intentos; el resto se aceptan.", flush=True)
+        print(f"  '{options.fail_pattern}' en el id -> falla {options.fail_times} intentos "
+              f"(agota el ciclo)", flush=True)
+    if options.recover_pattern:
+        print(f"  '{options.recover_pattern}' en el id -> falla {options.recover_after} y luego "
+              f"acepta (se recupera con reintentos)", flush=True)
+    print("  cualquier otro id -> se acepta a la primera", flush=True)
     HTTPServer(("0.0.0.0", options.port), WebhookHandler).serve_forever()
 
 

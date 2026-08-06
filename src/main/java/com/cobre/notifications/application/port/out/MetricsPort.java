@@ -18,9 +18,18 @@ public interface MetricsPort {
 
     void eventIngested(String eventType);
 
-    void deliveryAttempted(String eventType, AttemptOutcome outcome, long durationMs);
+    /**
+     * @param httpStatus codigo devuelto por el webhook, o {@code null} si no respondio
+     *                   (timeout o conexion rechazada)
+     */
+    void deliveryAttempted(String eventType, AttemptOutcome outcome, long durationMs, Integer httpStatus);
 
-    void deliverySettled(String eventType, DeliveryStatus finalStatus);
+    /**
+     * @param afterRetries si la entrega necesito mas de un intento. Distingue lo que
+     *                     salio bien a la primera de lo que se recupero gracias al
+     *                     backoff, que son dos senales operativas distintas
+     */
+    void deliverySettled(String eventType, DeliveryStatus finalStatus, boolean afterRetries);
 
     void retryScheduled(String eventType, int attemptNumber);
 

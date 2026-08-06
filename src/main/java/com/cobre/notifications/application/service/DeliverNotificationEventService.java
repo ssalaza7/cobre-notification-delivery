@@ -106,7 +106,7 @@ public class DeliverNotificationEventService implements DeliverNotificationEvent
     private Mono<DeliveryOutcome> recordAttempt(
             NotificationEvent event, int attemptNumber, WebhookDeliveryResult result) {
         Instant now = clock.instant();
-        metrics.deliveryAttempted(event.eventType(), result.outcome(), result.durationMs());
+        metrics.deliveryAttempted(event.eventType(), result.outcome(), result.durationMs(), result.httpStatus());
 
         DeliveryAttempt attempt = DeliveryAttempt.of(
                 event.eventId(), attemptNumber, event.replayCount(), now, result);
@@ -134,7 +134,7 @@ public class DeliverNotificationEventService implements DeliverNotificationEvent
         EventVersion expected = event.version();
         return events.update(event.markDelivered(result, now), expected)
                 .doOnNext(saved -> {
-                    metrics.deliverySettled(saved.eventType(), saved.deliveryStatus());
+                    metrics.deliverySettled(saved.eventType(), saved.deliveryStatus(), saved.attempts() > 1);
                     log.info("Notificacion {} entregada al cliente {} en el intento {}",
                             saved.eventId(), saved.clientId(), saved.attempts());
                 })
@@ -162,7 +162,7 @@ public class DeliverNotificationEventService implements DeliverNotificationEvent
         return events.update(event.markFailed(result, now), expected)
                 .flatMap(saved -> deliveryQueue.sendToDeadLetter(saved.eventId(), saved.clientId(), reason)
                         .doOnSuccess(ignored -> {
-                            metrics.deliverySettled(saved.eventType(), saved.deliveryStatus());
+                            metrics.deliverySettled(saved.eventType(), saved.deliveryStatus(), saved.attempts() > 1);
                             log.error("Entrega de {} para el cliente {} fallo definitivamente ({}) "
                                             + "tras {} intentos; queda disponible para reenvio manual",
                                     saved.eventId(), saved.clientId(), reason, saved.attempts());
@@ -175,7 +175,7 @@ public class DeliverNotificationEventService implements DeliverNotificationEvent
         Instant now = clock.instant();
         return events.update(event.markDiscarded(NO_SUBSCRIPTION_REASON, now), event.version())
                 .doOnNext(saved -> {
-                    metrics.deliverySettled(saved.eventType(), saved.deliveryStatus());
+                    metrics.deliverySettled(saved.eventType(), saved.deliveryStatus(), false);
                     log.info("Evento {} descartado: el cliente {} no tiene suscripcion activa para {}",
                             saved.eventId(), saved.clientId(), saved.eventType());
                 })

@@ -115,7 +115,7 @@ class DeliverNotificationEventServiceTest {
         assertThat(saved.getValue().attempts()).isEqualTo(1);
         assertThat(saved.getValue().webhookUrl()).isEqualTo("https://cliente.example.com/hook");
 
-        verify(metrics).deliverySettled(EVENT_TYPE, DeliveryStatus.COMPLETED);
+        verify(metrics).deliverySettled(EVENT_TYPE, DeliveryStatus.COMPLETED, false);
         verify(deliveryQueue, never()).enqueueRetry(anyString(), anyString(), any());
     }
 
@@ -135,7 +135,7 @@ class DeliverNotificationEventServiceTest {
         assertThat(attempt.getValue().attemptNumber()).isEqualTo(1);
         assertThat(attempt.getValue().outcome()).isEqualTo(AttemptOutcome.RETRYABLE_FAILURE);
         assertThat(attempt.getValue().httpStatus()).isEqualTo(503);
-        verify(metrics).deliveryAttempted(EVENT_TYPE, AttemptOutcome.RETRYABLE_FAILURE, 5000);
+        verify(metrics).deliveryAttempted(EVENT_TYPE, AttemptOutcome.RETRYABLE_FAILURE, 5000, 503);
     }
 
     @Test
@@ -180,7 +180,7 @@ class DeliverNotificationEventServiceTest {
 
         verify(deliveryQueue).sendToDeadLetter(eq(EVENT_ID), eq(CLIENT_ID), anyString());
         verify(deliveryQueue, never()).enqueueRetry(anyString(), anyString(), any());
-        verify(metrics).deliverySettled(EVENT_TYPE, DeliveryStatus.FAILED);
+        verify(metrics).deliverySettled(EVENT_TYPE, DeliveryStatus.FAILED, true);
     }
 
     @Test
