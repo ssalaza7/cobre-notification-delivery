@@ -32,6 +32,17 @@ public enum DeliveryStatus {
     }
 
     /**
+     * Nadie ha intentado entregarlo todavia.
+     *
+     * <p>Es el unico estado en el que reencolar es seguro. En {@code RETRYING} ya hay un
+     * mensaje esperando en la cola con su retardo: reencolarlo adelantaria el reintento
+     * y produciria un intento de mas.
+     */
+    public boolean isAwaitingFirstDelivery() {
+        return this == PENDING;
+    }
+
+    /**
      * Solo un fallo definitivo se puede reenviar. Reenviar algo que ya esta entregado
      * duplicaria la notificacion al cliente, y reenviar algo en curso competiria con
      * el reintento que ya esta programado en el broker.

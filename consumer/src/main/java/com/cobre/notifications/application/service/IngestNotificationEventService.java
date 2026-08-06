@@ -54,7 +54,7 @@ public class IngestNotificationEventService implements IngestNotificationEventUs
                 now);
 
         return events.insertIfAbsent(event)
-                .flatMap(inserted -> inserted ? accept(event) : ignoreDuplicate(event));
+                .flatMap(inserted -> inserted ? accept(event) : recoverIfStranded(event));
     }
 
     private Mono<IngestResult> accept(NotificationEvent event) {
@@ -67,8 +67,29 @@ public class IngestNotificationEventService implements IngestNotificationEventUs
                 .thenReturn(IngestResult.ACCEPTED);
     }
 
-    private Mono<IngestResult> ignoreDuplicate(NotificationEvent event) {
-        log.debug("Evento {} ya existia; se ignora la reentrega", event.eventId());
-        return Mono.just(IngestResult.DUPLICATE_IGNORED);
+    /**
+     * El evento ya existia. Casi siempre es una reentrega del broker y no hay nada que
+     * hacer, pero hay un caso que si exige actuar: que la fila se escribiera en un
+     * intento anterior <b>cuyo encolado fallo</b>. Ese evento quedaria en
+     * {@code pending} sin mensaje en la cola, y nadie lo entregaria nunca.
+     *
+     * <p>Por eso se reencola cuando sigue pendiente. Es seguro hacerlo de mas: el worker
+     * relee el estado autoritativo antes de entregar e ignora lo que ya esta cerrado.
+     */
+    private Mono<IngestResult> recoverIfStranded(NotificationEvent event) {
+        return events.findById(event.eventId())
+                .filter(existing -> existing.deliveryStatus().isAwaitingFirstDelivery())
+                .flatMap(existing -> {
+                    log.warn("Evento {} existia sin entrega pendiente en cola; se reencola",
+                            existing.eventId());
+                    return deliveryQueue.enqueue(existing.eventId(), existing.clientId())
+                            .thenReturn(IngestResult.ACCEPTED);
+                })
+                .defaultIfEmpty(IngestResult.DUPLICATE_IGNORED)
+                .doOnNext(result -> {
+                    if (result == IngestResult.DUPLICATE_IGNORED) {
+                        log.debug("Evento {} ya existia; se ignora la reentrega", event.eventId());
+                    }
+                });
     }
 }

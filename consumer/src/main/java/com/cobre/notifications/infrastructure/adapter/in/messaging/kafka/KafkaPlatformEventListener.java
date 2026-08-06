@@ -81,22 +81,32 @@ public class KafkaPlatformEventListener {
     }
 
     private Mono<Void> process(ReceiverRecord<String, String> record) {
-        return Mono.fromCallable(() -> objectMapper.readValue(record.value(), PlatformEventMessage.class))
-                .flatMap(message -> ingestUseCase.ingest(message.toCommand())
-                        .doOnNext(result -> log.debug("Evento de plataforma procesado: {}", result))
-                        .contextWrite(Context.of(
-                                LogFields.EVENT_ID, message.eventId(),
-                                LogFields.CLIENT_ID, message.clientId())))
+        PlatformEventMessage message;
+        try {
+            message = objectMapper.readValue(record.value(), PlatformEventMessage.class);
+        } catch (RuntimeException e) {
+            // Un mensaje ilegible no mejora reintentandolo y bloquearia la particion
+            // entera. Se confirma y queda registrado para inspeccion.
+            log.error("Mensaje descartado por no poder deserializarse: {}", e.toString());
+            record.receiverOffset().acknowledge();
+            return Mono.empty();
+        }
+
+        return ingestUseCase.ingest(message.toCommand())
+                .doOnNext(result -> log.debug("Evento de plataforma procesado: {}", result))
+                .contextWrite(Context.of(
+                        LogFields.EVENT_ID, message.eventId(),
+                        LogFields.CLIENT_ID, message.clientId()))
                 // Confirmar el offset es lo ultimo: hasta aqui, si el proceso muere,
                 // Kafka reentrega desde el anterior.
                 .doOnSuccess(ignored -> record.receiverOffset().acknowledge())
-                .onErrorResume(error -> {
-                    // Un mensaje corrupto no mejora reintentandolo y bloquearia la
-                    // particion entera. Se confirma y queda registrado para inspeccion.
-                    log.error("Evento descartado por no poder procesarse: {}", error.toString());
-                    record.receiverOffset().acknowledge();
-                    return Mono.empty();
-                })
+                // Un fallo de la base o de la cola NO se confirma: es transitorio y el
+                // evento debe volver. Confirmarlo aqui —como se hacia antes, con un
+                // unico catch para todo— dejaba el evento escrito en base, sin mensaje
+                // en cola y sin reentrega: perdido en silencio.
+                .doOnError(error -> log.error(
+                        "Fallo transitorio ingestando {}; no se confirma el offset y Kafka reentregara: {}",
+                        message.eventId(), error.toString()))
                 .then();
     }
 

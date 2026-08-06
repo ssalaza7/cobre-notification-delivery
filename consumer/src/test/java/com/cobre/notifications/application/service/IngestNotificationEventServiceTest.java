@@ -6,6 +6,7 @@ import com.cobre.notifications.application.port.out.DeliveryQueuePort;
 import com.cobre.notifications.application.port.out.MetricsPort;
 import com.cobre.notifications.application.port.out.NotificationEventRepositoryPort;
 import com.cobre.notifications.domain.model.NotificationEvent;
+import com.cobre.notifications.domain.model.WebhookDeliveryResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -69,6 +70,10 @@ class IngestNotificationEventServiceTest {
     @DisplayName("una reentrega del broker no genera una segunda entrega al cliente")
     void ignora_duplicados() {
         when(events.insertIfAbsent(any())).thenReturn(Mono.just(false));
+        // La reentrega tipica: el evento ya paso por su ciclo y esta cerrado.
+        when(events.findById(EVENT_ID)).thenReturn(Mono.just(
+                NotificationEvent.received(EVENT_ID, CLIENT_ID, "credit_transfer", "Transferencia", NOW, NOW)
+                        .markDelivered(WebhookDeliveryResult.delivered(200, 12), NOW)));
 
         IngestCommand command = new IngestCommand(
                 EVENT_ID, CLIENT_ID, "credit_transfer", "Transferencia", NOW.minusSeconds(2));
@@ -99,4 +104,44 @@ class IngestNotificationEventServiceTest {
         assertThat(saved.getValue().createdAt()).isEqualTo(NOW);
     }
 
+
+    @Test
+    @DisplayName("un evento que ya existia pero sigue sin entregarse se reencola, no se ignora")
+    void rescata_el_evento_varado() {
+        when(events.insertIfAbsent(any())).thenReturn(Mono.just(false));
+        NotificationEvent varado = NotificationEvent.received(
+                EVENT_ID, CLIENT_ID, "credit_transfer", "Transferencia", NOW, NOW);
+        when(events.findById(EVENT_ID)).thenReturn(Mono.just(varado));
+        when(deliveryQueue.enqueue(EVENT_ID, CLIENT_ID)).thenReturn(Mono.empty());
+
+        IngestCommand command = new IngestCommand(
+                EVENT_ID, CLIENT_ID, "credit_transfer", "Transferencia", NOW.minusSeconds(2));
+
+        StepVerifier.create(service.ingest(command))
+                .expectNext(IngestResult.ACCEPTED)
+                .verifyComplete();
+
+        // Sin esto, un evento cuyo encolado fallo en el intento anterior queda escrito
+        // en base y sin mensaje en cola: nadie lo entrega nunca.
+        verify(deliveryQueue).enqueue(EVENT_ID, CLIENT_ID);
+    }
+
+    @Test
+    @DisplayName("un evento ya entregado no se reencola: seria una segunda notificacion al cliente")
+    void no_reencola_lo_ya_cerrado() {
+        when(events.insertIfAbsent(any())).thenReturn(Mono.just(false));
+        NotificationEvent entregado = NotificationEvent.received(
+                EVENT_ID, CLIENT_ID, "credit_transfer", "Transferencia", NOW, NOW)
+                .markDelivered(WebhookDeliveryResult.delivered(200, 12), NOW);
+        when(events.findById(EVENT_ID)).thenReturn(Mono.just(entregado));
+
+        IngestCommand command = new IngestCommand(
+                EVENT_ID, CLIENT_ID, "credit_transfer", "Transferencia", NOW.minusSeconds(2));
+
+        StepVerifier.create(service.ingest(command))
+                .expectNext(IngestResult.DUPLICATE_IGNORED)
+                .verifyComplete();
+
+        verify(deliveryQueue, never()).enqueue(anyString(), anyString());
+    }
 }

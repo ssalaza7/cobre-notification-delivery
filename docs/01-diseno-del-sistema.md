@@ -190,13 +190,15 @@ sequenceDiagram
     participant S as Suscripciones
     participant H as Webhook cliente
 
-    K->>CON: evento de plataforma
+    CON->>K: pide eventos (poll)
+    K-->>CON: evento de plataforma
     CON->>DB: INSERT ... ON CONFLICT DO NOTHING
     Note over CON,DB: event_id es PK:<br/>la reentrega no duplica
     CON->>Q: encolar entrega
     CON-->>K: confirma el offset
 
-    Q->>W: orden de entrega
+    W->>Q: pide mensajes (long polling)
+    Q-->>W: orden de entrega
     W->>DB: leer estado autoritativo
     alt ya está en estado terminal
         W-->>Q: confirma, sin acción

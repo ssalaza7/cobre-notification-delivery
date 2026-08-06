@@ -162,17 +162,23 @@ sequenceDiagram
     participant C as Webhook del cliente
 
     P->>K: publica evento
-    K->>CON: consume
+    CON->>K: pide eventos (poll)
+    K-->>CON: evento
     CON->>DB: guarda (idempotente por event_id)
     CON->>Q: encola la entrega
     Note over CON,K: confirma el offset
-    Q->>W: entrega el mensaje
+    W->>Q: pide mensajes (espera hasta 20s)
+    Q-->>W: orden de entrega
     W->>DB: verifica suscripción activa
     W->>C: POST + firma HMAC
     C-->>W: 200
     W->>DB: completed · registra el intento
     W->>Q: borra el mensaje (confirmación)
 ```
+
+Ni Kafka ni SQS empujan mensajes: el consumidor y el worker preguntan, y la llamada se queda
+esperando hasta que haya algo o venza el tiempo. Por eso las flechas de petición salen de los
+componentes, no de los brokers.
 
 El offset de Kafka se confirma después de persistir el evento, y el mensaje de SQS se elimina
 después de completar la entrega. Si el proceso termina de forma abrupta en un punto
@@ -192,13 +198,15 @@ sequenceDiagram
     participant W as worker
     participant C as Webhook del cliente
 
-    Q->>W: intento 1
+    W->>Q: pide mensajes
+    Q-->>W: orden de entrega
     W->>C: POST
     C-->>W: 503
     W->>Q: reencola con DelaySeconds ≈ 3s
-    Note over W: retrying · intento registrado
+    Note over W,Q: retrying · el mensaje queda oculto 3 s
 
-    Q->>W: intento 2 (3,2 s después)
+    W->>Q: pide mensajes
+    Q-->>W: la misma orden, ya visible
     W->>C: POST
     C-->>W: 200
     W->>Q: borra el mensaje
@@ -222,9 +230,11 @@ sequenceDiagram
     participant D as DLQ
 
     loop hasta agotar los intentos
-        Q->>W: intento n
+        W->>Q: pide mensajes
+        Q-->>W: orden de entrega
         W->>C: POST
         C-->>W: 503
+        W->>Q: reencola con retardo
     end
     W->>D: deriva el mensaje a la DLQ
     Note over W: failed · habilitado para reenvío manual
@@ -253,7 +263,8 @@ sequenceDiagram
     API->>DB: reinicia el ciclo · replay_count + 1
     API->>Q: encola
     API-->>U: 202 Accepted
-    Q->>W: el worker entrega con el flujo habitual
+    W->>Q: pide mensajes
+    Q-->>W: la orden del reenvío, sin camino aparte
 ```
 
 La respuesta es 202 y no 200: la solicitud queda encolada, no entregada. La bitácora es de
@@ -312,7 +323,7 @@ afectado para notificar a su equipo).
 
 ### Pruebas
 
-190 pruebas, sin fallos. Cobertura agregada de los cuatro módulos: 94,5 % de instrucciones
+192 pruebas, sin fallos. Cobertura agregada de los cinco módulos: 94,3 % de instrucciones
 y 94,6 % de líneas. El build falla si desciende del 90 %.
 
 ---
