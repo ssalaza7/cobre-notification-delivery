@@ -74,55 +74,11 @@
   ],
   "item": [
     {
-      "name": "1 · Demostración",
-      "description": "El guion de la presentación, en orden. Recorre el ciclo completo de una notificación: se publica en el bus, se entrega, se registra.\n\nSolo hay **un caso de error**, y está a propósito: es el que dispara los reintentos con backoff exponencial y jitter, que es el corazón del ejercicio.\n\n| # | Qué muestra |\n|---|---|\n| 1 | El cliente cambia credenciales por un token |\n| 2 | *(preparación)* se publica un evento en el bus |\n| 3 | Entregado al webhook en el primer intento |\n| 4 | *(preparación)* se publica un evento cuyo destino fallará |\n| 5 | El destino falla, se reintenta con backoff y se agota |\n| 6 | Reenvío manual: reabre el ciclo y responde 202 |\n| 7 | La misma notificación, ahora entregada |\n\nEl paso 5 espera unos segundos a que ocurran los reintentos. Es buen momento para mostrar la terminal del receptor, donde se ven llegar en vivo.\n\nNo depende de datos sembrados: cada ejecución crea sus propios eventos, así que se puede correr las veces que haga falta.\n\nLos pasos 2 y 4 son preparación: publicar en el bus es del emisor, no de este servicio. Este consume eventos y expone consultas y reenvíos; lo que se demuestra son los pasos 3, 5, 6 y 7.",
+      "name": "1 · Flujo exitoso",
+      "description": "Una peticion: publicar un evento en el topico.\n\nEl servicio es un consumidor, asi que a partir de ahi todo ocurre solo. **Lo que se demuestra se ve en la terminal del receptor de webhooks**, no en Postman.",
       "item": [
         {
-          "name": "1 · Obtener token",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Emite el token', () => pm.response.to.have.status(200));",
-                  "const body = pm.response.json();",
-                  "pm.test('Bearer con vigencia de una hora', () => {",
-                  "    pm.expect(body.token_type).to.eql('Bearer');",
-                  "    pm.expect(body.expires_in).to.eql(3600);",
-                  "});",
-                  "pm.collectionVariables.set('token', body.access_token);"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"grant_type\": \"client_credentials\",\n  \"client_id\": \"{{client_id}}\",\n  \"client_secret\": \"{{client_secret}}\"\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/oauth/token",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "oauth",
-                "token"
-              ]
-            },
-            "description": "El cliente prueba su identidad y recibe un token de vida corta. Es POST y no GET porque un GET dejaría el secreto en la URL, y las URLs quedan en los logs del balanceador y en el historial."
-          }
-        },
-        {
-          "name": "2 · Preparación · la plataforma publica un evento",
+          "name": "Publicar un evento",
           "event": [
             {
               "listen": "prerequest",
@@ -181,61 +137,17 @@
                 "publish"
               ]
             },
-            "description": "**Esto no es parte del servicio.** Simula a la plataforma de Cobre publicando en su bus, que es lo que hace falta para disparar la prueba.\n\nQue el mensaje quede bien encolado es responsabilidad del emisor y del broker. Este servicio es un consumidor: su responsabilidad empieza cuando el evento le llega, y por eso aquí no se afirma nada sobre el resultado."
+            "description": "Publica un evento en el topico de la plataforma. **Es lo unico que se hace.**\n\nEl worker lo detecta, confirma la suscripcion del cliente y acciona su webhook. En la terminal del receptor aparece:\n\n```\n[EVT-DEMO-...] intento 1 -> respondo 200 | FIRMA OK\n```\n\nUn intento, entregado. `FIRMA OK` significa que el receptor recalculo el HMAC con su secreto y coincidio: la notificacion viene de nosotros y nadie la altero.\n\nEl identificador queda guardado en `ok_event_id` por si se quiere consultar el detalle desde la carpeta 3."
           }
-        },
+        }
+      ]
+    },
+    {
+      "name": "2 · Flujo con reintento",
+      "description": "Una peticion: publicar un evento cuyo destino va a rechazar.\n\n**Los reintentos son autonomos.** Aparecen solos en la terminal del receptor, separados por el backoff, hasta agotarse.\n\nDespues, desde la carpeta 3, se consulta la bitacora y se hace el reenvio.",
+      "item": [
         {
-          "name": "3 · Entregado en el primer intento",
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// La entrega es asincrona: se le da un momento al worker.",
-                  "setTimeout(() => {}, 4000);"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('La notificacion existe', () => pm.response.to.have.status(200));",
-                  "const body = pm.response.json();",
-                  "pm.test('Quedo entregada', () => pm.expect(body.delivery_status).to.eql('completed'));",
-                  "pm.test('Basto un intento', () => pm.expect(body.attempts).to.eql(1));",
-                  "pm.test('Con respuesta 200 del webhook', () =>",
-                  "    pm.expect(body.delivery_attempts[0].http_status).to.eql(200));",
-                  "console.log('Entregada a ' + body.webhook_url);"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/notification_events/{{ok_event_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "notification_events",
-                "{{ok_event_id}}"
-              ]
-            },
-            "description": "El camino feliz completo: el evento entró por el bus, se confirmó la suscripción, se entregó firmado al webhook y quedó registrado el intento con su duración."
-          }
-        },
-        {
-          "name": "4 · Preparación · publica un evento cuyo destino fallará",
+          "name": "Publicar un evento cuyo destino falla",
           "event": [
             {
               "listen": "prerequest",
@@ -296,167 +208,14 @@
                 "publish"
               ]
             },
-            "description": "**Esto no es parte del servicio.** Simula a la plataforma de Cobre publicando en su bus, que es lo que hace falta para disparar la prueba.\n\nQue el mensaje quede bien encolado es responsabilidad del emisor y del broker. Este servicio es un consumidor: su responsabilidad empieza cuando el evento le llega, y por eso aquí no se afirma nada sobre el resultado."
-          }
-        },
-        {
-          "name": "5 · Reintentos con backoff hasta agotarse",
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// Espera a que se agote el ciclo: 3s + 6s de backoff, mas jitter.",
-                  "// Mientras corre, la terminal del receptor muestra los intentos llegando.",
-                  "setTimeout(() => {}, 16000);"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('La notificacion existe', () => pm.response.to.have.status(200));",
-                  "const body = pm.response.json();",
-                  "const intentos = body.delivery_attempts.sort((a, b) => a.attempt_number - b.attempt_number);",
-                  "",
-                  "pm.test('Se reintento varias veces', () => pm.expect(body.attempts).to.be.above(1));",
-                  "pm.test('Cada intento fallo con 503', () =>",
-                  "    intentos.forEach(a => pm.expect(a.http_status).to.eql(503)));",
-                  "pm.test('Quedo fallida y por tanto reenviable', () =>",
-                  "    pm.expect(body.delivery_status).to.eql('failed'));",
-                  "",
-                  "// El backoff, en la consola: cada espera es mayor que la anterior.",
-                  "console.log('--- bitacora de intentos ---');",
-                  "let previo = null;",
-                  "intentos.forEach(a => {",
-                  "    const t = new Date(a.attempted_at);",
-                  "    const espera = previo ? ' (+' + ((t - previo) / 1000).toFixed(1) + 's)' : '';",
-                  "    console.log(`intento ${a.attempt_number}: ${a.outcome} http=${a.http_status}${espera}`);",
-                  "    previo = t;",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/notification_events/{{retry_event_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "notification_events",
-                "{{retry_event_id}}"
-              ]
-            },
-            "description": "El corazón del ejercicio. La bitácora muestra los tres intentos fallidos con esperas crecientes entre uno y otro, y la notificación terminando en `failed`.\n\nMira la consola de Postman: imprime el tiempo entre intentos. No son valores redondos porque llevan **jitter** — si el webhook de un cliente se cae, todas sus notificaciones fallan a la vez, y sin jitter reintentarían en el mismo instante y lo tumbarían de nuevo justo al recuperarse.\n\nAgotados los intentos, la notificación queda disponible para reenvío manual: es exactamente el caso de uso del siguiente paso."
-          }
-        },
-        {
-          "name": "6 · Reenviar la notificación fallida",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Acepta el reenvio con 202', () => pm.response.to.have.status(202));",
-                  "const body = pm.response.json();",
-                  "pm.test('Reabre el ciclo de entrega', () => {",
-                  "    pm.expect(body.delivery_status).to.eql('pending');",
-                  "    pm.expect(body.replay_count).to.eql(1);",
-                  "});",
-                  "pm.test('El contador de intentos vuelve a cero', () =>",
-                  "    pm.expect(body.attempts).to.eql(0));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/notification_events/{{retry_event_id}}/replay",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "notification_events",
-                "{{retry_event_id}}",
-                "replay"
-              ]
-            },
-            "description": "**202 y no 200**: el reenvío quedó encolado, no entregado. Si la API entregara en línea, la petición del cliente quedaría atada al tiempo de respuesta de su propio webhook y perdería la resiliencia del flujo normal.\n\nEl contador de intentos vuelve a cero para que el backoff empiece de nuevo — si no, el reenvío arrancaría directamente en el último escalón de espera. El `replay_count` sube a 1, y así los intentos de un ciclo y otro siguen distinguibles en la bitácora."
-          }
-        },
-        {
-          "name": "7 · Entregada tras el reenvío",
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "setTimeout(() => {}, 4000);"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('La notificacion existe', () => pm.response.to.have.status(200));",
-                  "const body = pm.response.json();",
-                  "pm.test('Ahora si quedo entregada', () => pm.expect(body.delivery_status).to.eql('completed'));",
-                  "pm.test('Conserva el historial del ciclo anterior', () =>",
-                  "    pm.expect(body.delivery_attempts.length).to.be.above(3));",
-                  "console.log('Ciclos: ' + (body.replay_count + 1) + ' | intentos totales registrados: ' + body.delivery_attempts.length);"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/notification_events/{{retry_event_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "notification_events",
-                "{{retry_event_id}}"
-              ]
-            },
-            "description": "Cierra la historia: la notificación que había fallado ahora está entregada.\n\nY la bitácora **conserva los intentos del ciclo anterior**: es una tabla append-only, nunca se actualiza ni se borra. Eso es lo que permite responder una queja con datos —qué se intentó, cuándo y qué respondió el destino— en vez de con suposiciones."
+            "description": "Mismo flujo, pero el destino rechaza con 503.\n\n**Los reintentos son autonomos del sistema**: no hay que volver a Postman ni hacer nada. En la terminal del receptor van apareciendo solos:\n\n```\n[EVT-FALLA-...] intento 1 -> respondo 503 | FIRMA OK\n[EVT-FALLA-...] intento 2 -> respondo 503 | FIRMA OK    (+3.5s)\n[EVT-FALLA-...] intento 3 -> respondo 503 | FIRMA OK    (+6.8s)\n```\n\nLas esperas crecen y no son redondas: backoff exponencial **con jitter**. Si el webhook de un cliente se cae, todas sus notificaciones fallan a la vez; sin jitter reintentarian en el mismo instante y lo tumbarian de nuevo justo al recuperarse.\n\nAgotados los tres intentos la notificacion queda en `failed`. Su identificador se guarda en `retry_event_id`: con el se consulta la bitacora y se hace el reenvio desde la carpeta 3."
           }
         }
       ]
     },
     {
-      "name": "2 · API self-service",
-      "description": "Lo que un cliente ejecuta en su dia a dia: obtener el token y las tres operaciones del enunciado.\n\nLos codigos de error de cada operacion estan documentados en la descripcion de cada peticion, no como peticiones aparte.",
+      "name": "3 · API self-service",
+      "description": "Lo que un cliente ejecuta a diario: obtener el token y las tres operaciones del enunciado.\n\nEl detalle y el reenvio apuntan al evento del flujo 2, asi que cierran esa historia: bitacora de los tres intentos, reenvio, y entregada.",
       "item": [
         {
           "name": "POST /oauth/token",
@@ -652,16 +411,16 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/notification_events/{{failed_event_id}}",
+              "raw": "{{base_url}}/notification_events/{{retry_event_id}}",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "notification_events",
-                "{{failed_event_id}}"
+                "{{retry_event_id}}"
               ]
             },
-            "description": "Detalle de una notificación con **la bitácora completa de intentos**: cuándo se intentó, qué respondió el destino, cuánto tardó y por qué falló.\n\nEs lo que permite responder una queja con datos y no con suposiciones.\n\n**Errores:** `404` si no existe **o si pertenece a otro cliente**."
+            "description": "Detalle de una notificación con **la bitácora completa de intentos**: cuándo se intentó, qué respondió el destino, cuánto tardó y por qué falló.\n\nEs lo que permite responder una queja con datos y no con suposiciones.\n\n**Errores:** `404` si no existe **o si pertenece a otro cliente**.\n\nApunta al evento del **flujo con reintento**: aqui se ve su bitacora con los tres intentos fallidos, sus horas y sus codigos."
           }
         },
         {
@@ -691,17 +450,17 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/notification_events/{{failed_event_id}}/replay",
+              "raw": "{{base_url}}/notification_events/{{retry_event_id}}/replay",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "notification_events",
-                "{{failed_event_id}}",
+                "{{retry_event_id}}",
                 "replay"
               ]
             },
-            "description": "Reenvía una notificación cuya entrega falló definitivamente.\n\nResponde **202**: el reenvío quedó encolado, no entregado. El resultado se consulta después con el endpoint de detalle.\n\n**Errores:** `409` si la notificación no está en `failed` —reenviar una entregada la duplicaría, y reenviar una en curso competiría con el reintento ya programado—, `403` si el token no tiene el permiso `notifications:replay`, `404` si es de otro cliente."
+            "description": "Reenvía una notificación cuya entrega falló definitivamente.\n\nResponde **202**: el reenvío quedó encolado, no entregado. El resultado se consulta después con el endpoint de detalle.\n\n**Errores:** `409` si la notificación no está en `failed` —reenviar una entregada la duplicaría, y reenviar una en curso competiría con el reintento ya programado—, `403` si el token no tiene el permiso `notifications:replay`, `404` si es de otro cliente.\n\nReenvia el evento del **flujo con reintento**. Mira la terminal del receptor: aparece un cuarto intento, esta vez aceptado. Consultando el detalle otra vez se ve `completed` con los cuatro intentos registrados: la bitacora es append-only y no borra la historia."
           }
         }
       ]

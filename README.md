@@ -182,45 +182,41 @@ terminan en los logs del balanceador, en el historial y en la cabecera `Referer`
 
 En [postman/](postman/), organizada en dos carpetas.
 
-### 1 · Demostración — 7 peticiones
+### 1 · Flujo exitoso — 1 petición
 
-El guion de la presentación. Recorre el ciclo completo de una notificación, y **todo son
-casos de éxito salvo uno**, que existe justamente para disparar los reintentos.
-
-| # | Qué muestra |
-|---|---|
-| 1 | El cliente cambia credenciales por un token |
-| 2 | La plataforma publica un evento en el bus |
-| 3 | Entregado al webhook en el primer intento |
-| 4 | Se publica un evento cuyo destino va a fallar |
-| 5 | Falla, se reintenta con backoff y se agota → `failed` |
-| 6 | Reenvío manual: reabre el ciclo → `202` |
-| 7 | La misma notificación, ahora entregada |
-
-Ensayo real:
+Publicar un evento en el tópico. **Es lo único que se hace**: el servicio es un consumidor
+y el resto ocurre solo. Lo que se demuestra se ve en la terminal del receptor:
 
 ```
-3 · estado=completed intentos=1 http=200
-5 · estado=failed intentos=3
-     intento 1: retryable_failure http=503
-     intento 2: retryable_failure http=503 (+3.5s)
-     intento 3: retryable_failure http=503 (+6.8s)
-6 · reenviar -> 202
-7 · estado=completed ciclos=2 intentos_registrados=4
+[EVT-DEMO-...] intento 1 -> respondo 200 | FIRMA OK
 ```
 
-Los `+3.5s` y `+6.8s` son los escalones de 3s y 6s **con jitter**. Y los 4 intentos
-registrados al final prueban que la bitácora es append-only: el reenvío no borra la
+### 2 · Flujo con reintento — 1 petición
+
+Publicar un evento cuyo destino rechaza. **Los reintentos son autónomos**, aparecen solos:
+
+```
+[EVT-FALLA-...] intento 1 -> respondo 503 | FIRMA OK
+[EVT-FALLA-...] intento 2 -> respondo 503 | FIRMA OK    (+3.5s)
+[EVT-FALLA-...] intento 3 -> respondo 503 | FIRMA OK    (+6.8s)
+```
+
+Esperas crecientes y no redondas: backoff exponencial con jitter. Agotados los tres, la
+notificación queda en `failed`.
+
+### 3 · API self-service — 5 peticiones
+
+Lo que un cliente ejecuta a diario. El detalle y el reenvío apuntan al evento del flujo 2,
+así que cierran esa historia:
+
+```
+detalle  -> estado=failed intentos=3
+reenviar -> 202
+detalle  -> estado=completed ciclos=2 intentos_registrados=4
+```
+
+Los 4 intentos registrados prueban que la bitácora es append-only: el reenvío no borra la
 historia del ciclo anterior.
-
-**No depende de datos sembrados.** Cada ejecución crea sus propios eventos, así que se
-puede correr las veces que haga falta — en el ensayo y en vivo.
-
-### 2 · API self-service — 5 peticiones
-
-Lo que un cliente ejecuta en su día a día: obtener el token y las tres operaciones del
-enunciado. Los códigos de error van documentados en la descripción de cada petición, no
-como peticiones aparte.
 
 ---
 
