@@ -33,21 +33,29 @@ flowchart LR
 
     SVC -->|publica| K
     K -->|consume| CON
+    CON -->|persiste| DB
     CON -->|encola| Q
-    CON --- DB
     Q -->|toma la orden| W
-    W -->|reencola con retardo| Q
-    Q -.->|reintentos agotados| DLQ
+    W -->|consulta suscripción<br/>registra intento| DB
     W -->|POST firmado HMAC| CLI
-    W --- DB
-    API --- DB
+    W -->|reencola con retardo| Q
+    W -->|reintentos agotados| DLQ
+    Q -.->|mensaje no confirmado| DLQ
     USR -->|consulta · reenvía| API
-    API -.->|encola reenvío| Q
+    API -->|consulta| DB
+    API -->|encola reenvío| Q
 
     style CON fill:#1f6feb,color:#fff
     style W fill:#1f6feb,color:#fff
     style API fill:#1f6feb,color:#fff
 ```
+
+La flecha indica la dirección del dato. La línea punteada marca el único flujo que ningún
+componente invoca: cuando un mensaje no se confirma tras varias entregas —por ejemplo, uno
+corrupto que nunca llega a procesarse— SQS lo mueve a la DLQ por su *redrive policy*.
+
+Los reintentos agotados son distintos: ahí el worker envía el mensaje a la DLQ de forma
+explícita, con el motivo del descarte.
 
 ### Tres componentes desplegables
 

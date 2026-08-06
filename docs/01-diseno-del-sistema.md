@@ -38,7 +38,7 @@ flowchart TB
     platform -- "eventos de negocio" --> svc
     svc -- "POST firmado con HMAC" --> client_sys
     client_dev -- "GET / POST replay<br/>API REST autenticada" --> svc
-    svc -- "logs y métricas" --> monitoring
+    svc -. "logs y métricas" .-> monitoring
 
     style svc fill:#1f6feb,color:#fff
 ```
@@ -72,11 +72,13 @@ flowchart TB
     obs["Logs y métricas"]
 
     platform --> bus --> consumer
-    consumer --> dq
     consumer --> db
-    worker <--> dq
-    worker -- "reintentos agotados" --> dlq
+    consumer --> dq
+    dq -- "orden de entrega" --> worker
     worker -- "POST firmado" --> hook
+    worker -- "reintento con retardo" --> dq
+    worker -- "reintentos agotados" --> dlq
+    dq -. "mensaje no confirmado" .-> dlq
     worker --> db
     api --> db
     api -- "replay" --> dq
@@ -86,6 +88,10 @@ flowchart TB
     style worker fill:#1f6feb,color:#fff
     style consumer fill:#1f6feb,color:#fff
 ```
+
+Las líneas punteadas son telemetría: la aplicación escribe a stdout y publica en su endpoint
+de métricas, y son el recolector de logs y el agente de Datadog quienes las extraen. Ningún
+componente llama a OpenSearch ni a Datadog.
 
 ### Tres componentes, un dominio
 
@@ -410,7 +416,7 @@ flowchart TB
     dd["Datadog<br/>métricas · APM"]
 
     users --> r53 --> waf --> alb --> api
-    confluent -. "PrivateLink" .-> consumer
+    confluent -- "eventos · PrivateLink" --> consumer
     consumer --> aurora
     consumer --> vpce
     api --> aurora
@@ -422,13 +428,19 @@ flowchart TB
     worker --> nat --> hooks
     api -.-> os
     worker -.-> os
+    consumer -.-> os
     api -.-> dd
     worker -.-> dd
+    consumer -.-> dd
 
     style api fill:#1f6feb,color:#fff
     style worker fill:#1f6feb,color:#fff
     style consumer fill:#1f6feb,color:#fff
 ```
+
+Las líneas punteadas son telemetría: la aplicación escribe a stdout y publica en su endpoint
+de métricas, y son el recolector de logs y el agente de Datadog quienes las extraen. Ningún
+componente llama a OpenSearch ni a Datadog.
 
 Cada módulo se despliega como un servicio de ECS independiente, con su propia imagen, su
 propia política de autoescalado y su propio ciclo de despliegue.
