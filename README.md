@@ -25,7 +25,7 @@ flowchart LR
     CLI["Webhook del cliente"]
     USR["Cliente"]
 
-    subgraph repo["monorepo · tres ejecutables"]
+    subgraph svc["Notification Delivery Service"]
         CON["<b>event-consumer</b><br/>ingesta y encola"]
         W["<b>delivery-worker</b><br/>entrega y reintenta"]
         API["<b>monitoring-api</b><br/>consulta y reenvío"]
@@ -49,31 +49,30 @@ flowchart LR
     style API fill:#1f6feb,color:#fff
 ```
 
-### Tres ejecutables independientes
+### Tres componentes desplegables
 
-```
-notification-delivery-service/
-├── common/            dominio · casos de uso · persistencia · cola · métricas · logs
-├── event-consumer/    consume el bus y encola la entrega
-├── delivery-worker/   entrega al webhook y reintenta
-└── monitoring-api/    API self-service y emisión de tokens
-```
+| Componente | Responsabilidad | Señal de escalado |
+|---|---|---|
+| **event-consumer** | Ingesta desde el bus y encola la entrega | Retraso del consumidor |
+| **delivery-worker** | Entrega al webhook y aplica los reintentos | Profundidad de la cola |
+| **monitoring-api** | Consulta y reenvío manual | Peticiones por segundo |
 
-Cada uno es un jar con sus propias dependencias, verificable sobre los artefactos:
+Se despliegan por separado porque sus cargas son de naturaleza distinta: el worker sigue el
+ritmo de la plataforma y la API el de las personas. Escalar una no debe obligar a provisionar
+réplicas de la otra. Además, la saturación de cada una tiene consecuencias diferentes —
+consultas degradadas frente a notificaciones sin entregar.
 
-| Módulo | Dependencia propia | Lo que no lleva |
+Cada componente es un artefacto propio y carga solo las dependencias que usa. Verificable
+sobre los jars construidos:
+
+| Componente | Dependencia propia | Lo que no incluye |
 |---|---|---|
 | `event-consumer` | `reactor-kafka`, `kafka-clients` | Spring Security |
 | `delivery-worker` | cliente HTTP reactivo, firma HMAC | Kafka, Spring Security |
 | `monitoring-api` | Spring Security, resource server JWT | Kafka |
 
-Las cargas son de naturaleza distinta —el worker sigue el ritmo de la plataforma y la API el
-de las personas—, de modo que escalar una no obliga a provisionar réplicas de la otra. Qué
-adaptadores arrancan lo decide el classpath de cada módulo, no una anotación evaluada en
-tiempo de ejecución.
-
-**Regla de entrada a `common`:** algo se traslada allí cuando lo necesita un segundo módulo,
-no antes. Cada dependencia añadida la cargan los tres jars aunque dos no la usen.
+Qué adaptadores se activan lo determina el classpath de cada artefacto, no una condición
+evaluada al arrancar.
 
 ### Kafka como bus, SQS como cola de trabajo
 
@@ -110,7 +109,17 @@ monitoring-api/      adaptador de entrada: REST + seguridad
 
 Las dependencias apuntan siempre hacia el interior. Los paquetes `domain` y `application` no
 importan ninguna clase de Spring; el cableado reside en la clase de configuración de cada
-ejecutable.
+componente.
+
+**Organización del código.** Los tres componentes viven en un mismo repositorio, junto a una
+librería con lo que comparten. Es una decisión de organización, no de arquitectura: el diseño
+sería idéntico con tres repositorios y la librería publicada como artefacto. El monorepo evita
+versionar y publicar esa librería en cada cambio del dominio, a cambio de que un cambio en ella
+recompile los tres.
+
+Una funcionalidad se traslada a la librería compartida cuando la necesita un segundo
+componente, no antes: cada dependencia añadida allí la cargan los tres artefactos aunque dos no
+la utilicen.
 
 La consecuencia verificable es que las pruebas del dominio y de los casos de uso se ejecutan
 sin contexto de Spring, sin base de datos y sin broker.

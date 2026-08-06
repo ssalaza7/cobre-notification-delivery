@@ -56,7 +56,7 @@ flowchart TB
     platform["Microservicios<br/>de la plataforma"]
     bus[("Bus de eventos<br/>de la plataforma")]
 
-    subgraph service["Notification Delivery Service · monorepo, tres ejecutables"]
+    subgraph service["Notification Delivery Service"]
         consumer["<b>event-consumer</b><br/>consume el bus y encola"]
         worker["<b>delivery-worker</b><br/>entrega y reintenta"]
         api["<b>monitoring-api</b><br/>GET · GET/id · POST replay"]
@@ -87,24 +87,14 @@ flowchart TB
     style consumer fill:#1f6feb,color:#fff
 ```
 
-### Un dominio, tres ejecutables
+### Tres componentes, un dominio
 
-El repositorio es un monorepo con una librería compartida y tres módulos ejecutables:
-
-```
-common/            dominio · casos de uso · persistencia · cola de trabajo · observabilidad
-event-consumer/    consume el bus y encola la entrega
-delivery-worker/   entrega al webhook y aplica la política de reintentos
-monitoring-api/    API self-service y emisión de tokens
-```
-
-Cada módulo declara únicamente las dependencias que usa. El cliente de Kafka existe solo en
-`event-consumer`, el cliente HTTP saliente solo en `delivery-worker` y la cadena de seguridad
-web solo en `monitoring-api`. La selección de adaptadores la determina el classpath, no una
-condición evaluada al arrancar.
-
-El criterio de entrada a `common` es que una funcionalidad la necesite un segundo módulo.
-Cada dependencia añadida allí la cargan los tres artefactos aunque dos no la utilicen.
+El sistema se despliega como tres componentes independientes: uno ingesta del bus, otro
+entrega y reintenta, y el tercero atiende la API self-service. Cada uno es un artefacto propio
+que carga únicamente las dependencias que usa: el cliente de Kafka existe solo en el
+consumidor, el cliente HTTP saliente solo en el worker y la cadena de seguridad web solo en la
+API. La selección de adaptadores la determina el classpath, no una condición evaluada al
+arrancar.
 
 **Despliegues separados, sí.** Los perfiles de carga son independientes: la API responde a
 personas y paneles, mientras que el worker sigue el ritmo de la plataforma y puede tener que
@@ -117,12 +107,19 @@ estados, que por eso vive en `common`. Duplicar esa lógica en cada módulo no p
 independencia sino divergencia: el acoplamiento reside en el esquema, no en el código.
 
 El límite de un microservicio se traza por capacidad de negocio, y aquí el *bounded context*
-es uno solo. La separación en módulos aísla dependencias y ciclos de build, no datos.
+es uno solo. La separación en componentes aísla ciclos de despliegue y dependencias, no datos.
 
-La independencia real exigiría que cada módulo fuera dueño de sus datos: que la API dejara de
-leer las tablas que escribe el worker y pasara a ser un modelo de lectura alimentado por
+La independencia real exigiría que cada componente fuera dueño de sus datos: que la API dejara
+de leer las tablas que escribe el worker y pasara a ser un modelo de lectura alimentado por
 eventos, con el reenvío convertido en un comando publicado (CQRS). Es la evolución que
 corresponde cuando la entrega tenga otro equipo responsable y otro SLA.
+
+**Organización del código.** Los tres componentes conviven en un repositorio junto a una
+librería con el dominio, los casos de uso y los adaptadores compartidos. Es una decisión de
+organización y no de arquitectura: el diseño descrito aquí sería idéntico con tres repositorios
+y la librería publicada como artefacto versionado. El monorepo evita ese ciclo de publicación
+en cada cambio del dominio, a cambio de que un cambio en la librería recompile los tres
+componentes.
 
 ---
 
@@ -131,12 +128,12 @@ corresponde cuando la entrega tenga otro equipo responsable y otro SLA.
 ```mermaid
 flowchart LR
     subgraph in["Adaptadores de entrada"]
-        msg1["KafkaPlatformEventListener<br/><i>event-consumer</i>"]
-        msg2["SqsDeliveryCommandListener<br/><i>delivery-worker</i>"]
-        rest["NotificationEventController<br/><i>monitoring-api</i>"]
+        msg1["KafkaPlatformEventListener"]
+        msg2["SqsDeliveryCommandListener"]
+        rest["NotificationEventController"]
     end
 
-    subgraph app["Aplicación · puertos y casos de uso · <i>common</i>"]
+    subgraph app["Aplicación · puertos y casos de uso"]
         direction TB
         pin["<b>Puertos de entrada</b><br/>Ingest · Deliver<br/>Query · Get · Replay"]
         uc["<b>Servicios</b><br/>orquestan dominio y puertos"]
@@ -144,15 +141,15 @@ flowchart LR
         pin --> uc --> pout
     end
 
-    subgraph dom["Dominio · cero framework · <i>common</i>"]
+    subgraph dom["Dominio · cero framework"]
         model["NotificationEvent · DeliveryStatus<br/>RetryPolicy · Subscription<br/>DeliveryAttempt · EventQuery"]
     end
 
     subgraph out["Adaptadores de salida"]
-        r2dbc["Persistencia<br/><i>common</i>"]
-        mq["Cola de trabajo<br/><i>common</i>"]
-        met["Micrometer<br/><i>common</i>"]
-        web["WebClient + HMAC + anti-SSRF<br/><i>delivery-worker</i>"]
+        r2dbc["Persistencia"]
+        mq["Cola de trabajo"]
+        met["Micrometer"]
+        web["WebClient + HMAC + anti-SSRF"]
     end
 
     in --> pin
