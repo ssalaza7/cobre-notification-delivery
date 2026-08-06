@@ -1,0 +1,36 @@
+# Perfil de desarrollo y demostracion local.
+#
+# Apunta los webhooks a un receptor HTTP en localhost y acorta los retardos de reintento
+# para poder verlos completos mientras se explican.
+spring:
+  flyway:
+    # Carga tambien las credenciales de demostracion, que no existen en produccion.
+    locations: classpath:db/migration,classpath:db/demo
+
+cobre:
+  sqs:
+    # Emulador local de SQS.
+    endpoint: http://localhost:9324
+
+  security:
+    # Solo en local: deja /actuator/prometheus sin token, para que Prometheus lo raspe y
+    # se pueda abrir en el navegador durante una demostracion.
+    #
+    # En cualquier otro perfil exige el scope notifications:monitor, y en produccion lo
+    # correcto ademas es moverlo a un puerto de gestion que no se publique a internet.
+    open-metrics: true
+
+
+logging:
+  level:
+    com.cobre.notifications: DEBUG
+
+  # En local la consola vuelve a ser legible para humanos y el JSON en ECS se escribe a
+  # un archivo, que es lo que consume Filebeat en el stack de observabilidad local.
+  # Asi se puede seguir la demo en la terminal y a la vez verla en Kibana.
+  structured:
+    format:
+      console: ""
+      file: ecs
+  file:
+    name: logs/notification-delivery-service.json

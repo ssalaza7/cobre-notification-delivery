@@ -1,0 +1,120 @@
+# Worker de entrega. No conoce Kafka ni la cadena de seguridad web.
+server:
+  port: ${SERVER_PORT:8081}
+
+spring:
+  application:
+    name: notification-delivery-service
+
+  # Credenciales de la base. Los valores por defecto corresponden al contenedor local
+  # desechable que levanta docker-compose y no dan acceso a nada: mantenerlos evita
+  # convertir "clonar y correr" en un ritual. En cualquier entorno real DB_PASSWORD se
+  # inyecta desde el gestor de secretos.
+  r2dbc:
+    url: r2dbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:notifications}
+    username: ${DB_USER:cobre}
+    password: ${DB_PASSWORD:cobre}
+    pool:
+      initial-size: 5
+      max-size: 20
+      max-idle-time: 30m
+
+  # Flyway corre sobre JDBC una unica vez al arrancar; el runtime de la app es 100% R2DBC.
+  flyway:
+    enabled: true
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:notifications}
+    user: ${DB_USER:cobre}
+    password: ${DB_PASSWORD:cobre}
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+cobre:
+  # Cola de trabajo de las entregas, con su cola muerta.
+  sqs:
+    region: ${AWS_REGION:us-east-1}
+    # Vacio en AWS, donde vale el endpoint real del servicio. Se define solo para
+    # apuntar a un emulador local.
+    endpoint: ${SQS_ENDPOINT:}
+    delivery-queue-url: ${SQS_DELIVERY_QUEUE:http://localhost:9324/000000000000/notifications-delivery}
+    dead-letter-queue-url: ${SQS_DLQ:http://localhost:9324/000000000000/notifications-dlq}
+    max-messages: 10
+    wait-time: 20s
+    visibility-timeout: 60s
+
+  webhook:
+    # Rechaza destinos que no sean HTTPS y direcciones internas (mitigacion SSRF).
+    # En el perfil `local` se desactiva para poder apuntar a un receptor de pruebas en localhost.
+    require-https: true
+    block-internal-addresses: true
+    connect-timeout: 2s
+    response-timeout: 5s
+    max-response-bytes: 2048
+    # Si se define, sobrescribe la URL de TODAS las suscripciones. Pensado para la
+    # demo en vivo, donde la URL destino se entrega el mismo dia de la presentacion.
+    override-url: ${WEBHOOK_OVERRIDE_URL:}
+
+  retry:
+    max-attempts: 5
+    # Backoff exponencial con jitter, aplicado como DelaySeconds del mensaje.
+    # Ningun escalon puede pasar de 15 minutos: es el tope que impone SQS.
+    delays: 5s, 30s, 2m, 10m, 15m
+    jitter-ratio: 0.2
+
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when-authorized
+  metrics:
+    tags:
+      application: ${spring.application.name}
+      env: ${COBRE_ENVIRONMENT:local}
+
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+
+  # Datadog. La via recomendada es que el Datadog Agent haga scraping del endpoint
+  # Prometheus de arriba (check OpenMetrics): la aplicacion no necesita la API key, no
+  # abre trafico saliente hacia internet y si el agente se cae no afecta al servicio.
+  #
+  # Este exportador directo existe como alternativa para entornos sin agente. Se apaga
+  # por defecto a proposito: cada combinacion distinta de etiquetas es una serie
+  # facturable en Datadog, y encenderlo sin querer es una factura sorpresa.
+  datadog:
+    metrics:
+      export:
+        enabled: ${COBRE_DATADOG_ENABLED:false}
+        api-key: ${DATADOG_API_KEY:}
+        site: ${DATADOG_SITE:datadoghq.com}
+        step: 30s
+
+logging:
+  level:
+    root: WARN
+    # Solo lo nuestro habla en INFO. Flyway, Spring Data, Netty y los clientes de
+    # Kafka producen decenas de lineas de arranque que no son traza de negocio y que en
+    # el indice de logs solo estorban a quien esta diagnosticando una entrega.
+    com.cobre.notifications: INFO
+
+  # Por defecto se escribe JSON en formato ECS (Elastic Common Schema) a stdout, que es
+  # lo correcto en un contenedor: el proceso no sabe nada del destino final y es el
+  # recolector (Filebeat, Fluent Bit o FireLens en ECS) el que decide a donde va. Si la
+  # aplicacion escribiera directo a Elasticsearch, una caida del cluster se convertiria
+  # en backpressure dentro del camino de entrega.
+  # El perfil `local` sobrescribe esto por una consola legible para humanos.
+  structured:
+    format:
+      console: ecs
+    ecs:
+      service:
+        name: ${spring.application.name}
+        version: ${COBRE_SERVICE_VERSION:0.0.1-SNAPSHOT}
+        environment: ${COBRE_ENVIRONMENT:local}
