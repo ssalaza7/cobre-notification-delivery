@@ -32,8 +32,9 @@ public record SqsProperties(
      * Tope de retardo por mensaje que impone SQS.
      *
      * <p>Es una restriccion real de la plataforma y condiciona la politica de
-     * reintentos: ningun escalon de backoff puede superar los 15 minutos. Con RabbitMQ
-     * no existe ese limite, porque el retardo se logra con el TTL de una cola.
+     * reintentos: ningun escalon de backoff puede superar los 15 minutos. Conviene
+     * decirlo antes de que lo pregunten, porque acota cuanto puede esperar el sistema
+     * a que un destino caido se recupere por si solo.
      */
     public static final Duration MAX_DELAY = Duration.ofSeconds(900);
 

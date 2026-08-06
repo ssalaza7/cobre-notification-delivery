@@ -20,20 +20,18 @@ import java.time.Duration;
 /**
  * Base de los adaptadores de entrada sobre SQS.
  *
- * <p>El modelo es distinto al de AMQP y conviene tenerlo claro: RabbitMQ <b>empuja</b>
- * mensajes al consumidor, mientras que SQS obliga a <b>pedirlos</b>. Aqui se usa long
- * polling con espera de 20 segundos, que es el maximo: reduce la latencia a casi cero
- * cuando hay trafico y evita pagar por sondeos en vacio cuando no lo hay.
+ * <p>SQS obliga a <b>pedir</b> los mensajes, no los empuja. Aqui se usa long polling con
+ * espera de 20 segundos, que es el maximo: reduce la latencia a casi cero cuando hay
+ * trafico y evita pagar por sondeos en vacio cuando no lo hay.
  *
- * <p>La confirmacion tambien cambia de forma pero no de fondo. En AMQP se confirma con
- * un ack; en SQS se <b>borra</b> el mensaje. Mientras no se borre, el mensaje reaparece
- * al vencer el visibility timeout. El efecto es el mismo: si el proceso muere a mitad
- * del procesamiento, el mensaje vuelve y no se pierde la notificacion.
+ * <p><b>Confirmar es borrar.</b> Mientras el mensaje no se borre, reaparece al vencer el
+ * visibility timeout. Si el proceso muere a mitad del procesamiento, el mensaje vuelve y
+ * la notificacion no se pierde.
  *
- * <p>Un mensaje que falla simplemente no se borra. SQS lo reentrega y, tras las
- * entregas que fije la redrive policy de la cola, lo manda solo a la cola muerta. Es
- * la misma proteccion contra mensajes envenenados que en AMQP se consigue rechazando
- * sin reencolar, pero aqui la cuenta la lleva el broker.
+ * <p>Un mensaje que falla simplemente no se borra. SQS lo reentrega y, tras las entregas
+ * que fije la redrive policy de la cola, lo manda solo a la cola muerta. Es la
+ * proteccion contra mensajes envenenados, y la cuenta la lleva el broker en vez de la
+ * aplicacion.
  */
 abstract class AbstractSqsListener {
 

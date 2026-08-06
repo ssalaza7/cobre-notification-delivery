@@ -1,44 +1,40 @@
 #!/usr/bin/env bash
-# Publica un evento en el bus de la plataforma, simulando lo que haria otro
-# microservicio de Cobre. Usa la API de gestion de RabbitMQ para no depender de
-# ninguna libreria de cliente.
+#
+# Publica un evento en el topic de la plataforma, simulando lo que hace otro servicio
+# de Cobre. Usa el proxy HTTP de Redpanda para no depender de un cliente de Kafka.
 #
 # Uso:
-#   ./scripts/publish-event.sh                                   # evento de ejemplo
-#   ./scripts/publish-event.sh EVT100 CLIENT001 credit_transfer "Transferencia por $250.000"
-
+#   ./scripts/publish-event.sh EVT-DEMO-1 CLIENT001 credit_transfer "Transferencia por 1.500.000"
+#
+# El identificador decide como responde el receptor de pruebas:
+#   *FALLA*    -> rechaza los 3 intentos y agota el ciclo
+#   *RECUPERA* -> rechaza 1 y luego acepta
+#   cualquier otro -> se acepta a la primera
 set -euo pipefail
 
-EVENT_ID="${1:-EVT-$(date +%s)}"
+EVENT_ID="${1:-EVT-DEMO-$(date +%s)}"
 CLIENT_ID="${2:-CLIENT001}"
 EVENT_TYPE="${3:-credit_transfer}"
-CONTENT="${4:-Transferencia recibida por \$1.500.000}"
-CREATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+CONTENT="${4:-Transferencia recibida}"
+PROXY="${KAFKA_HTTP_URL:-http://localhost:8082}"
+TOPIC="${KAFKA_TOPIC:-cobre.platform.events}"
 
-RABBIT_URL="${RABBIT_URL:-http://localhost:15672}"
-RABBIT_USER="${RABBIT_USER:-guest}"
-RABBIT_PASSWORD="${RABBIT_PASSWORD:-guest}"
-EXCHANGE="cobre.platform.events"
-
-PAYLOAD=$(cat <<JSON
-{"event_id":"${EVENT_ID}","client_id":"${CLIENT_ID}","event_type":"${EVENT_TYPE}","content":"${CONTENT}","created_at":"${CREATED_AT}"}
-JSON
-)
-
-BODY=$(python3 - "$PAYLOAD" <<'PY'
-import json, sys
-print(json.dumps({
-    "properties": {"content_type": "application/json", "delivery_mode": 2},
-    "routing_key": "notification.created",
-    "payload": sys.argv[1],
-    "payload_encoding": "string",
-}))
+CUERPO=$(python3 - "$EVENT_ID" "$CLIENT_ID" "$EVENT_TYPE" "$CONTENT" <<'PY'
+import datetime, json, sys
+evento = {
+    "event_id": sys.argv[1],
+    "client_id": sys.argv[2],
+    "event_type": sys.argv[3],
+    "content": sys.argv[4],
+    "created_at": datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+}
+# El proxy espera el evento como valor del registro, no como cadena.
+print(json.dumps({"records": [{"value": evento}]}))
 PY
 )
 
-echo "Publicando en ${EXCHANGE}: ${PAYLOAD}"
-curl -s -u "${RABBIT_USER}:${RABBIT_PASSWORD}" \
-  -H "Content-Type: application/json" \
-  -X POST "${RABBIT_URL}/api/exchanges/%2F/${EXCHANGE}/publish" \
-  -d "${BODY}"
+echo "Publicando en el topic ${TOPIC}: ${EVENT_ID}"
+curl -s -X POST "${PROXY}/topics/${TOPIC}" \
+  -H "Content-Type: application/vnd.kafka.json.v2+json" \
+  -d "${CUERPO}"
 echo

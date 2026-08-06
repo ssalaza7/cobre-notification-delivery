@@ -8,6 +8,10 @@ spring:
     locations: classpath:db/migration,classpath:db/demo
 
 cobre:
+  sqs:
+    # Emulador local de SQS.
+    endpoint: http://localhost:9324
+
   webhook:
     require-https: false
     block-internal-addresses: false

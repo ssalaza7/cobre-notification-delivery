@@ -230,15 +230,14 @@ métricas del destino. Las redirecciones tampoco se siguen — un 302 podría re
 la petición a la red interna y evadir la validación anti-SSRF.
 
 **3. El retardo lo hace el broker, no el proceso.**
-Un `delayElement` en memoria se pierde con el reinicio o el reescalado. En la cola
-sobrevive al despliegue. En RabbitMQ son colas sin consumidor con TTL por mensaje y
-dead-letter de vuelta a la cola de entrega; en AWS es `DelaySeconds` de SQS.
+Un `delayElement` en memoria se pierde con el reinicio o el reescalado; en la cola
+sobrevive al despliegue. Con SQS es `DelaySeconds` en el propio mensaje: la cola lo
+retiene y no lo entrega hasta que toca, sin colas intermedias ni reglas de devolución.
 
-**4. Una cola por escalón de backoff, no una con TTL variable.**
-RabbitMQ solo expira mensajes desde la cabeza de la cola: con TTLs mezclados, un
-mensaje de 30 minutos al frente bloquea a los de 5 segundos que vienen detrás. El
-jitter se aplica como TTL por mensaje dentro de su escalón, así que el bloqueo de
-cabeza queda acotado a esa ventana en vez de al rango completo.
+**4. El tope de 15 minutos de SQS acota el backoff.**
+`DelaySeconds` no admite más, así que ningún escalón puede superarlo. Es una restricción
+real de la plataforma y define cuánto puede esperar el sistema a que un destino se
+recupere solo antes de darse por vencido y dejarlo para reenvío manual.
 
 ### Por qué hay jitter
 
@@ -395,8 +394,12 @@ adaptador de entrada se escribe, no la estructura.
 
 | Propiedad | En este repo |
 |---|---|
-| 1, 2, 3, 4, 5 | Implementadas sobre RabbitMQ, verificadas en ejecución |
+| 1, 2, 3, 4, 5 | Implementadas sobre **Kafka + SQS**, verificadas en ejecución |
 | 6, 7 | Implementadas sobre PostgreSQL, verificadas en ejecución |
+
+El código implementa la arquitectura objetivo, no una aproximación: en local se apunta a
+Redpanda y ElasticMQ, que hablan los mismos protocolos. Pasar a Confluent Cloud y AWS es
+cambiar direcciones, no adaptadores.
 
 La sección siguiente traduce todo esto a una nube concreta.
 
@@ -466,8 +469,8 @@ flowchart TB
 
 | Local (este repo) | AWS | Qué cambia en el código |
 |---|---|---|
-| RabbitMQ (entrada) | Confluent Cloud / Kafka | Un adaptador de entrada nuevo |
-| RabbitMQ (entrega y retardo) | SQS + `DelaySeconds` + redrive | Un adaptador de salida nuevo |
+| Redpanda (Kafka local) | Confluent Cloud | **Nada**: mismo protocolo, otra dirección |
+| ElasticMQ (SQS local) | SQS | **Nada**: mismo protocolo, otra dirección |
 | PostgreSQL en Docker | Aurora PostgreSQL | Nada: sigue siendo R2DBC |
 | Filebeat + Elasticsearch | FireLens → OpenSearch Service | Nada: la app escribe ECS a stdout |
 | Prometheus | Datadog Agent (OpenMetrics) | Nada: el `MetricsPort` no cambia |
@@ -475,7 +478,7 @@ flowchart TB
 
 **El dominio, los casos de uso y sus pruebas no aparecen en esa columna.** Ese es el
 retorno concreto de la arquitectura hexagonal, y es verificable: basta ver qué
-paquetes importan `org.springframework` o `com.rabbitmq`.
+paquetes importan `org.springframework`, `org.apache.kafka` o `software.amazon.awssdk`.
 
 ### Por qué Kafka a la entrada pero SQS a la entrega
 

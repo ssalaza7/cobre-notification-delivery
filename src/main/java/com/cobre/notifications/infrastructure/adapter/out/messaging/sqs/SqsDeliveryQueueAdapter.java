@@ -17,20 +17,16 @@ import java.util.Map;
 /**
  * Adaptador de salida hacia SQS.
  *
- * <p>Es la implementacion alterna de {@link DeliveryQueuePort}, y su existencia es la
- * prueba de la arquitectura hexagonal: pasar de RabbitMQ a SQS es escribir esta clase
- * y su consumidor. El dominio, los casos de uso y sus pruebas no cambian.
- *
- * <p>Diferencias con la version de RabbitMQ, y por que no afectan al caso de uso:
+ * <p>Tres propiedades de SQS explican por que es la cola de trabajo correcta aqui:
  *
  * <ul>
- *   <li><b>El retardo es nativo.</b> SQS trae {@code DelaySeconds} por mensaje, asi que
- *       no hacen falta colas de retardo con TTL ni dead-letter de vuelta. Menos piezas
- *       que declarar y que puedan desincronizarse.</li>
- *   <li><b>El tope es de 15 minutos.</b> Es la restriccion real de la plataforma; el
- *       perfil de AWS ajusta los escalones para no superarla.</li>
- *   <li><b>No hay orden.</b> Una cola estandar no lo promete, y aqui eso es una
- *       ventaja: es lo que impide que el webhook lento de un cliente bloquee a los
+ *   <li><b>El retardo es nativo.</b> {@code DelaySeconds} por mensaje es todo el
+ *       backoff: no hacen falta colas de espera ni reglas de dead-letter para
+ *       devolverlos. Menos piezas que declarar y que puedan desincronizarse.</li>
+ *   <li><b>El tope es de 15 minutos.</b> Es una restriccion real de la plataforma y
+ *       condiciona la politica de reintentos: ningun escalon puede superarla.</li>
+ *   <li><b>No hay orden.</b> Una cola estandar no lo promete, y esa "carencia" es
+ *       justamente lo que impide que el webhook lento de un cliente bloquee a los
  *       demas.</li>
  * </ul>
  */

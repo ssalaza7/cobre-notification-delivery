@@ -31,7 +31,8 @@ POST /notification_events/{id}/replay          → reenvío de una entrega falli
 - Java 21, Spring Boot 4.0.7, **Gradle** (wrapper incluido)
 - **WebFlux** (Netty, no bloqueante) — ninguna entrega bloquea un hilo esperando al webhook
 - **PostgreSQL** con R2DBC + Flyway
-- **RabbitMQ** con `reactor-rabbitmq` para la cola de entrega, los retardos y la DLQ
+- **Kafka** como bus de eventos y **SQS** como cola de trabajo, reintentos y DLQ
+  (en local, Redpanda y ElasticMQ: mismos protocolos, sin cuenta de AWS)
 - **Spring Security** como resource server JWT
 - Micrometer → Prometheus y Datadog; logs JSON en **ECS** → Filebeat → Elasticsearch/Kibana
 - JUnit 5, Mockito, `StepVerifier`, JaCoCo con gate del 90%
@@ -54,10 +55,10 @@ application/
 
 infrastructure/
   adapter/in/web/          controller REST, DTOs, errores RFC 7807
-  adapter/in/messaging/    consumidores AMQP
+  adapter/in/messaging/    consumidor de Kafka y de la cola SQS
   adapter/out/persistence/ R2DBC
   adapter/out/webhook/     WebClient + firma HMAC + validación anti-SSRF
-  adapter/out/messaging/   RabbitMQ: entrega, colas de retardo, DLQ
+  adapter/out/messaging/   SQS: cola de entrega con retardo nativo y DLQ
   adapter/out/metrics/     Micrometer
   observability/           propagación de MDC en reactivo
   config/                  cableado de beans y seguridad
@@ -93,7 +94,8 @@ set -a; source .env; set +a
 inyecta desde **Secrets Manager**, que permite rotarla sin redesplegar y deja registro
 de cada acceso en CloudTrail.
 
-> Las contraseñas de Postgres y RabbitMQ sí tienen valor por defecto, y es deliberado:
+> Las contraseñas de Postgres y las credenciales de los emuladores sí tienen valor por
+> defecto, y es deliberado:
 > son contenedores locales desechables que no dan acceso a nada. Tratarlas como secretos
 > sería teatro; en entornos reales vienen del gestor igual que la clave de firma.
 
@@ -103,11 +105,14 @@ de cada acceso en CloudTrail.
 docker compose up -d
 ```
 
-Postgres en `5432`, RabbitMQ en `5672` y su consola en http://localhost:15672
-(`guest`/`guest`).
+Levanta Postgres, **Kafka** (Redpanda en `9092`, con proxy HTTP en `8082`) y **SQS**
+(ElasticMQ en `9324`).
+
+Redpanda y ElasticMQ hablan los mismos protocolos que Kafka y SQS reales: el código es
+idéntico al que correría contra Confluent Cloud y AWS, solo cambian las direcciones.
 
 > Si esos puertos están ocupados, son configurables:
-> `PG_PORT=5433 RABBITMQ_PORT=5673 RABBITMQ_UI_PORT=15673 docker compose up -d`
+> `PG_PORT=5433 KAFKA_PORT=9093 SQS_PORT=9325 docker compose up -d`
 
 ### 2. Arrancar un receptor de webhooks de prueba
 
@@ -130,7 +135,7 @@ python3 scripts/webhook-receiver.py --status 500     # falla siempre: agota rein
 SPRING_PROFILES_ACTIVE=local ./gradlew bootRun
 ```
 
-El perfil `local` acorta los reintentos (3s · 8s · 20s · 60s) para poder verlos completos
+El perfil `local` acorta los reintentos (3s · 6s · 10s) para poder verlos completos
 en una demostración, y permite webhooks HTTP hacia `localhost`. En cualquier otro perfil
 se exige HTTPS y se bloquean destinos internos.
 
@@ -478,7 +483,7 @@ docker compose --profile observability up -d
 |---|---|---|
 | **Grafana** | http://localhost:3000 | Tablero *Entrega de notificaciones* (ver abajo) |
 | **Kibana** | http://localhost:5602 | La traza completa de una notificación, filtrando por `event_id` o `client_id` |
-| **RabbitMQ** | http://localhost:15672 | Las colas de retardo y la DLQ. `guest`/`guest` |
+| **SQS** | http://localhost:9324 | La cola de entrega y la cola muerta |
 | **Prometheus** | http://localhost:9091 | Las métricas en crudo, si alguien pregunta de dónde salen |
 
 **Kibana pide un paso la primera vez:** ☰ → *Stack Management* → *Data Views* → *Create*,
@@ -556,9 +561,10 @@ Cada línea lleva `request_id`, `client_id` y `event_id` como campos indexados, 
 una consulta reconstruye el ciclo completo de una notificación:
 
 ```
-17:00:37.775 [DEBUG] client=CLIENT002 hilo=rabbitmq-nio       Evento EVT-KIBANA-1 aceptado y encolado
-17:00:37.914 [WARN ] client=CLIENT002 hilo=rabbitmq-nio       Entrega falló (intento 1, status 503): reintento en PT3.38S
-17:00:40.960 [INFO ] client=CLIENT002 hilo=reactor-tcp-nio-2  Notificación entregada en el intento 2
+negocio   EVT-KIBANA-1   CLIENT002   Evento aceptado y encolado para entrega
+delivery  EVT-KIBANA-1   CLIENT002   Entrega saliente  -> 503 (5001ms)
+negocio   EVT-KIBANA-1   CLIENT002   Entrega falló (intento 1): reintento en PT3.38S
+negocio   EVT-KIBANA-1   CLIENT002   Notificación entregada en el intento 2
 ```
 
 Los campos de correlación viajan por el contexto reactivo hasta el MDC. Es lo que

@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "b7c1e2a4-9f3d-4c1a-8e52-3f0a6d5b2c11",
     "name": "Cobre — Notification Delivery Service",
-    "description": "Dos carpetas.\n\n**1 · Demostración** — el guion de la presentación, de punta a punta. Se publica un evento en el bus y se ve entregado; se publica otro cuyo destino falla, se ve el ciclo de reintentos con backoff hasta agotarse, y se reenvía manualmente hasta entregarlo. Todo son casos de éxito salvo uno, que existe justamente para disparar los reintentos.\n\nNo depende de datos sembrados: cada ejecución crea sus propios eventos y se puede correr las veces que haga falta.\n\n**2 · API self-service** — lo que consume un cliente de Cobre. Es la referencia del contrato: las tres operaciones del enunciado más la obtención del token, y las dos respuestas de error que un integrador necesita conocer.\n\n**Antes de empezar**\n\n1. `docker compose up -d`\n2. `python3 scripts/webhook-receiver.py`\n3. `SPRING_PROFILES_ACTIVE=local ./gradlew bootRun`\n\nEl receptor responde 200 a todo, salvo a los eventos cuyo identificador contiene `FALLA`: esos rechazan los tres intentos del ciclo —agotándolo— y aceptan a partir del cuarto, que es el primero del reenvío manual. Por eso una misma sesión muestra la entrega limpia, el ciclo de reintentos agotándose y la recuperación por reenvío, sin tocar nada entre medias.\n\nAjusta `base_url` y `rabbit_url` si cambiaste los puertos.",
+    "description": "Dos carpetas.\n\n**1 · Demostración** — el guion de la presentación, de punta a punta. Se publica un evento en el bus y se ve entregado; se publica otro cuyo destino falla, se ve el ciclo de reintentos con backoff hasta agotarse, y se reenvía manualmente hasta entregarlo. Todo son casos de éxito salvo uno, que existe justamente para disparar los reintentos.\n\nNo depende de datos sembrados: cada ejecución crea sus propios eventos y se puede correr las veces que haga falta.\n\n**2 · API self-service** — lo que consume un cliente de Cobre. Es la referencia del contrato: las tres operaciones del enunciado más la obtención del token, y las dos respuestas de error que un integrador necesita conocer.\n\n**Antes de empezar**\n\n1. `docker compose up -d`  (Postgres, Kafka y SQS locales)\n2. `python3 scripts/webhook-receiver.py`\n3. `SPRING_PROFILES_ACTIVE=local ./gradlew bootRun`\n\nEl receptor responde 200 a todo, salvo a los eventos cuyo identificador contiene `FALLA`: esos rechazan los tres intentos del ciclo —agotándolo— y aceptan a partir del cuarto, que es el primero del reenvío manual. Por eso una misma sesión muestra la entrega limpia, el ciclo de reintentos agotándose y la recuperación por reenvío, sin tocar nada entre medias.\n\nAjusta `base_url` y `kafka_proxy_url` si cambiaste los puertos.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -12,12 +12,12 @@
       "type": "string"
     },
     {
-      "key": "rabbit_url",
-      "value": "http://localhost:15672",
+      "key": "kafka_proxy_url",
+      "value": "http://localhost:8082",
       "type": "string"
     },
     {
-      "key": "platform_exchange",
+      "key": "kafka_topic",
       "value": "cobre.platform.events",
       "type": "string"
     },
@@ -88,56 +88,40 @@
                   "// Identificador unico por ejecucion, para poder correr la demo varias veces.",
                   "const id = 'EVT-DEMO-' + Date.now();",
                   "pm.collectionVariables.set('ok_event_id', id);",
-                  "pm.collectionVariables.set('evento_payload', JSON.stringify(JSON.stringify({",
+                  "pm.collectionVariables.set('evento_payload', JSON.stringify({",
                   "    event_id: id,",
                   "    client_id: pm.collectionVariables.get('client_id'),",
                   "    event_type: 'credit_transfer',",
                   "    content: 'Transferencia recibida por $1.500.000',",
                   "    created_at: new Date().toISOString()",
-                  "})));"
+                  "}));"
                 ]
               }
             }
           ],
           "request": {
             "method": "POST",
-            "auth": {
-              "type": "basic",
-              "basic": [
-                {
-                  "key": "username",
-                  "value": "guest"
-                },
-                {
-                  "key": "password",
-                  "value": "guest"
-                }
-              ]
-            },
             "header": [
               {
                 "key": "Content-Type",
-                "value": "application/json"
+                "value": "application/vnd.kafka.json.v2+json"
               }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"properties\": { \"content_type\": \"application/json\", \"delivery_mode\": 2 },\n  \"routing_key\": \"notification.created\",\n  \"payload\": {{evento_payload}},\n  \"payload_encoding\": \"string\"\n}"
+              "raw": "{\n  \"records\": [\n    { \"value\": {{evento_payload}} }\n  ]\n}"
             },
             "url": {
-              "raw": "{{rabbit_url}}/api/exchanges/%2F/{{platform_exchange}}/publish",
+              "raw": "{{kafka_proxy_url}}/topics/{{kafka_topic}}",
               "host": [
-                "{{rabbit_url}}"
+                "{{kafka_proxy_url}}"
               ],
               "path": [
-                "api",
-                "exchanges",
-                "%2F",
-                "{{platform_exchange}}",
-                "publish"
+                "topics",
+                "{{kafka_topic}}"
               ]
             },
-            "description": "Publica un evento en el topico de la plataforma. **Es lo unico que se hace.**\n\nEl worker lo detecta, confirma la suscripcion del cliente y acciona su webhook. En la terminal del receptor aparece:\n\n```\n[EVT-DEMO-...] intento 1 -> respondo 200 | FIRMA OK\n```\n\nUn intento, entregado. `FIRMA OK` significa que el receptor recalculo el HMAC con su secreto y coincidio: la notificacion viene de nosotros y nadie la altero.\n\nEl identificador queda guardado en `ok_event_id` por si se quiere consultar el detalle desde la carpeta 3."
+            "description": "Publica un evento en el topic de la plataforma. **Es lo unico que se hace.**\n\nSe usa el proxy HTTP de Kafka para no necesitar un cliente de Kafka en Postman; el mensaje entra al mismo topic que usaria cualquier otro servicio de la plataforma.\n\nEl worker lo detecta, confirma la suscripcion del cliente y acciona su webhook. En la terminal del receptor aparece:\n\n```\n[EVT-DEMO-...] intento 1 -> respondo 200 | FIRMA OK\n```\n\n`FIRMA OK` significa que el receptor recalculo el HMAC con su secreto y coincidio: la notificacion viene de nosotros y nadie la altero."
           }
         }
       ]
@@ -159,56 +143,40 @@
                   "// poder mostrar el backoff de verdad.",
                   "const id = 'EVT-FALLA-' + Date.now();",
                   "pm.collectionVariables.set('retry_event_id', id);",
-                  "pm.collectionVariables.set('evento_payload', JSON.stringify(JSON.stringify({",
+                  "pm.collectionVariables.set('evento_payload', JSON.stringify({",
                   "    event_id: id,",
                   "    client_id: pm.collectionVariables.get('client_id'),",
                   "    event_type: 'credit_card_payment',",
                   "    content: 'Pago con tarjeta por $150.00',",
                   "    created_at: new Date().toISOString()",
-                  "})));"
+                  "}));"
                 ]
               }
             }
           ],
           "request": {
             "method": "POST",
-            "auth": {
-              "type": "basic",
-              "basic": [
-                {
-                  "key": "username",
-                  "value": "guest"
-                },
-                {
-                  "key": "password",
-                  "value": "guest"
-                }
-              ]
-            },
             "header": [
               {
                 "key": "Content-Type",
-                "value": "application/json"
+                "value": "application/vnd.kafka.json.v2+json"
               }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"properties\": { \"content_type\": \"application/json\", \"delivery_mode\": 2 },\n  \"routing_key\": \"notification.created\",\n  \"payload\": {{evento_payload}},\n  \"payload_encoding\": \"string\"\n}"
+              "raw": "{\n  \"records\": [\n    { \"value\": {{evento_payload}} }\n  ]\n}"
             },
             "url": {
-              "raw": "{{rabbit_url}}/api/exchanges/%2F/{{platform_exchange}}/publish",
+              "raw": "{{kafka_proxy_url}}/topics/{{kafka_topic}}",
               "host": [
-                "{{rabbit_url}}"
+                "{{kafka_proxy_url}}"
               ],
               "path": [
-                "api",
-                "exchanges",
-                "%2F",
-                "{{platform_exchange}}",
-                "publish"
+                "topics",
+                "{{kafka_topic}}"
               ]
             },
-            "description": "Mismo flujo, pero el destino rechaza con 503.\n\n**Los reintentos son autonomos del sistema**: no hay que volver a Postman ni hacer nada. En la terminal del receptor van apareciendo solos:\n\n```\n[EVT-FALLA-...] intento 1 -> respondo 503 | FIRMA OK\n[EVT-FALLA-...] intento 2 -> respondo 503 | FIRMA OK    (+3.5s)\n[EVT-FALLA-...] intento 3 -> respondo 503 | FIRMA OK    (+6.8s)\n```\n\nLas esperas crecen y no son redondas: backoff exponencial **con jitter**. Si el webhook de un cliente se cae, todas sus notificaciones fallan a la vez; sin jitter reintentarian en el mismo instante y lo tumbarian de nuevo justo al recuperarse.\n\nAgotados los tres intentos la notificacion queda en `failed`. Su identificador se guarda en `retry_event_id`: con el se consulta la bitacora y se hace el reenvio desde la carpeta 3."
+            "description": "Mismo flujo, pero el destino rechaza con 503.\n\n**Los reintentos son autonomos**: no hay que volver a Postman. El backoff viaja como `DelaySeconds` del mensaje en SQS, asi que es la propia cola la que retiene el reintento hasta que toca.\n\n```\n[EVT-FALLA-...] intento 1 -> respondo 503 | FIRMA OK\n[EVT-FALLA-...] intento 2 -> respondo 503 | FIRMA OK    (+3.1s)\n[EVT-FALLA-...] intento 3 -> respondo 503 | FIRMA OK    (+6.1s)\n```\n\nAgotados los tres intentos la notificacion queda en `failed` y su mensaje aparece en la cola muerta de SQS."
           }
         }
       ]

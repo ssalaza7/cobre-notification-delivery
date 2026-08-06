@@ -27,11 +27,12 @@ import java.util.Map;
 /**
  * Arquitectura objetivo: Kafka como bus de eventos y SQS como cola de trabajo.
  *
- * <p>Es el reparto correcto de responsabilidades. Kafka es un excelente bus —retencion
- * larga, muchos lectores del mismo evento, reprocesamiento— y una mala cola de trabajo:
- * no tiene retardo por mensaje, asi que el backoff exigiria un topic por escalon, y
- * ordena por particion, de modo que un webhook lento bloquearia a todos los clientes de
- * esa particion.
+ * <p>Es el reparto correcto de responsabilidades, y la razon de que sean dos
+ * tecnologias y no una: Kafka es un excelente bus —retencion larga, muchos lectores del
+ * mismo evento, reprocesamiento— y una mala cola de trabajo. No tiene retardo por
+ * mensaje, asi que el backoff exigiria un topic por escalon y codigo propio para
+ * moverlos; y ordena por particion, de modo que un webhook lento bloquearia a todos los
+ * clientes que compartan esa particion.
  *
  * <p>SQS es lo contrario: no promete orden —y esa "carencia" es justo lo que impide que
  * un destino caido afecte a los demas— y trae de fabrica el retardo por mensaje y la
@@ -41,7 +42,6 @@ import java.util.Map;
  * codigo es identico al que correria contra Confluent Cloud y SQS.
  */
 @Configuration
-@MessagingProvider(MessagingProvider.AWS)
 public class AwsMessagingConfig {
 
     @Bean

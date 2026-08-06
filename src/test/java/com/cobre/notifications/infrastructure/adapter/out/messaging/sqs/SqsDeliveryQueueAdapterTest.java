@@ -21,10 +21,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Verifica que el adaptador de SQS cumpla el mismo contrato que el de RabbitMQ.
+ * Verifica el contrato de la cola de trabajo.
  *
- * <p>Lo que cambia frente a AMQP es que el retardo es nativo: no hacen falta colas de
- * espera con TTL ni dead-letter de vuelta, basta un atributo del mensaje.
+ * <p>Lo mas caracteristico de SQS es que el retardo es nativo: no hacen falta colas de
+ * espera ni reglas de devolucion, basta un atributo del mensaje.
  */
 class SqsDeliveryQueueAdapterTest {
 

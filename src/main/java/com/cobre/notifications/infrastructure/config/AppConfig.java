@@ -49,8 +49,6 @@ import java.util.random.RandomGenerator;
 @EnableConfigurationProperties({
         WebhookProperties.class,
         RetryProperties.class,
-        MessagingProperties.class,
-        RabbitConnectionProperties.class,
         KafkaProperties.class,
         SqsProperties.class,
         SecurityProperties.class

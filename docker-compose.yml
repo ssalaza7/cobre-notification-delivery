@@ -18,34 +18,16 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
-  rabbitmq:
-    image: rabbitmq:3.13-management-alpine
-    container_name: cobre-notifications-rabbitmq
-    ports:
-      - "${RABBITMQ_PORT:-5672}:5672"
-      - "${RABBITMQ_UI_PORT:-15672}:15672"
-    environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
-  # --- Emuladores de la arquitectura objetivo -----------------------------------
-  # Se levantan con:  docker compose --profile aws up -d
-  #
-  # Hablan los mismos protocolos que Kafka y SQS, asi que el codigo es identico al que
-  # correria en AWS: solo cambia la direccion a la que apunta. Permiten demostrar la
-  # arquitectura objetivo sin cuenta de AWS ni costo alguno.
+  # --- Mensajeria ----------------------------------------------------------------
+  # Emuladores de la arquitectura objetivo: hablan los mismos protocolos que Kafka y
+  # SQS, asi que el codigo es identico al que correria contra Confluent Cloud y AWS.
+  # Solo cambian las direcciones. Sin cuenta de AWS y sin costo.
 
   # Kafka local. Redpanda habla el protocolo de Kafka pero arranca en segundos y en un
   # solo contenedor, sin las piezas que exige un Kafka completo.
   redpanda:
     image: redpandadata/redpanda:v24.2.11
     container_name: cobre-notifications-redpanda
-    profiles: ["aws"]
     command:
       - redpanda
       - start
@@ -57,8 +39,12 @@ services:
       - --check=false
       - --kafka-addr=PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092
       - --advertise-kafka-addr=PLAINTEXT://redpanda:29092,OUTSIDE://localhost:9092
+      # Proxy HTTP: permite publicar en el topic con un POST, sin cliente de Kafka.
+      - --pandaproxy-addr=INTERNAL://0.0.0.0:28082,EXTERNAL://0.0.0.0:8082
+      - --advertise-pandaproxy-addr=INTERNAL://redpanda:28082,EXTERNAL://localhost:8082
     ports:
       - "${KAFKA_PORT:-9092}:9092"
+      - "${KAFKA_HTTP_PORT:-8082}:8082"
     healthcheck:
       test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
       interval: 5s
@@ -70,7 +56,6 @@ services:
   elasticmq:
     image: softwaremill/elasticmq-native:1.6.11
     container_name: cobre-notifications-elasticmq
-    profiles: ["aws"]
     ports:
       - "${SQS_PORT:-9324}:9324"
     volumes:
