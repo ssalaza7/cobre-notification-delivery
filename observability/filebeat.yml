@@ -31,7 +31,9 @@ processors:
         - host           # por si alguna version lo agrega igual
         - log.file       # inode, device_id y ruta del archivo
         - log.offset
-        - process.pid    # cambia en cada arranque y no sirve para correlacionar
+        - process       # pid y nombre del hilo: irrelevantes para diagnosticar una
+                        # transaccion o un error. Que la correlacion sobreviva al salto
+                        # de hilo es una propiedad del diseno, no un dato de operacion.
         - service.node
       ignore_missing: true
 

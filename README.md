@@ -535,7 +535,7 @@ negocio. En Kibana se filtra con `log_type : "api"` y ya.
 | Los once campos `host.*` | Describían el contenedor de Filebeat, no la máquina del servicio |
 | `log.file.inode`, `device_id`, `offset` | Detalles del archivo, no del negocio |
 | `agent.*`, `input.*`, `ecs.version` | Metadatos del propio recolector |
-| `process.pid` | Cambia en cada arranque; no sirve para correlacionar |
+| `process.pid` y `process.thread.name` | Irrelevantes para diagnosticar una transacción o un error |
 | Logs de Flyway, Spring Data y Netty | Ruido de arranque; `root` está en `WARN` |
 | Accesos a `/actuator` | Prometheus consulta cada 5s: serían ~17.000 líneas diarias inútiles |
 
@@ -561,10 +561,10 @@ una consulta reconstruye el ciclo completo de una notificación:
 17:00:40.960 [INFO ] client=CLIENT002 hilo=reactor-tcp-nio-2  Notificación entregada en el intento 2
 ```
 
-Fíjate en la columna del hilo: la última línea corrió en un hilo distinto, segundos
-después, y **conserva la correlación**. En WebFlux el MDC vive en un `ThreadLocal` y se
-pierde en cada salto de hilo; se resuelve con `context-propagation` y un
-`ThreadLocalAccessor` por campo. Sin eso, todos esos campos salen nulos.
+Los campos de correlación viajan por el contexto reactivo hasta el MDC. Es lo que
+permite que una entrega que empieza en el hilo del broker y termina en el de Netty
+—segundos después, tras un reintento— conserve el mismo `event_id`. Sin
+`context-propagation`, ese campo saldría vacío y los logs no se podrían correlacionar.
 
 **El `content` de la notificación nunca se registra**: es dato financiero del cliente.
 
