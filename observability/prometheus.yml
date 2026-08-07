@@ -6,10 +6,17 @@ global:
   evaluation_interval: 5s
 
 scrape_configs:
-  - job_name: notification-delivery-service
+  # Los tres servicios, por nombre de contenedor dentro de la red de compose.
+  #
+  # Hay que raspar los tres: las metricas de entrega y reintentos las publica el worker,
+  # las de ingesta el consumer y las de peticiones la api. Con un solo objetivo el
+  # tablero queda a medias sin que nada lo indique.
+  - job_name: notification-delivery
     metrics_path: /actuator/prometheus
     static_configs:
-      # host.docker.internal: la aplicacion corre en el host, no en un contenedor.
-      - targets: ["host.docker.internal:8080"]
-        labels:
-          service: notification-delivery-service
+      - targets: ["api:8080"]
+        labels: {service: api}
+      - targets: ["worker:8081"]
+        labels: {service: worker}
+      - targets: ["consumer:8083"]
+        labels: {service: consumer}
