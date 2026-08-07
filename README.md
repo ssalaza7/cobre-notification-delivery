@@ -359,6 +359,25 @@ npx newman run postman/cobre-notification-delivery.postman_collection.json
 | **Kafka** | http://localhost:8085 | El topic, sus mensajes y el grupo de consumo |
 | **SQS** | http://localhost:9325 | La cola de entrega y la DLQ, con su profundidad |
 
+### Empezar de cero
+
+Antes de un ensayo o de una demostración, para que los tableros no arrastren datos de pruebas
+anteriores. Logs y métricas viven en sistemas distintos, así que hay que limpiar los dos:
+
+```bash
+# Logs: indice de Elasticsearch, archivos locales y el registro de posiciones de Filebeat
+docker compose --profile observability stop filebeat
+curl -X DELETE "http://localhost:9200/_data_stream/cobre-notifications*"
+rm -f logs/*
+docker compose --profile observability rm -f filebeat
+
+# Metricas: el historial de Prometheus y los contadores, que viven en cada proceso
+docker compose --profile observability rm -sf prometheus
+docker compose --profile apps restart consumer worker api
+
+docker compose --profile apps --profile observability up -d
+```
+
 ### Apagar
 
 ```bash
