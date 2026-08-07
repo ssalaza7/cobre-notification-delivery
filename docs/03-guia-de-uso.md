@@ -167,17 +167,29 @@ eventos de forma idéntica.
 
 ## Colección de Postman
 
-Ubicada en [postman/](../postman/), con tres carpetas y siete peticiones que reproducen el uso
-habitual de un cliente.
+En [postman/](../postman/). Diez peticiones en cuatro carpetas, en orden de ejecución: las
+variables se encadenan solas, así que basta recorrerla de arriba abajo.
 
 | Carpeta | Peticiones | Contenido |
 |---|---|---|
-| 1 · Flujo exitoso | 1 | Publicación del evento. El resto del flujo es autónomo |
-| 2 · Flujo con reintento | 1 | Publicación de un evento cuyo destino rechaza la entrega |
-| 3 · API self-service | 5 | Token, listado, detalle, reenvío y detalle posterior |
+| 1 · Preparación | 3 | Token, registro del webhook y consulta de las suscripciones |
+| 2 · Flujo exitoso | 1 | Publicar un evento. **Es lo único que se hace**: el resto es autónomo |
+| 3 · Flujo con reintento | 1 | Publicar un evento cuyo destino rechaza |
+| 4 · Consulta y reenvío | 5 | Listado, filtro, detalle, reenvío y comprobación de la bitácora |
 
-Las peticiones encadenan variables: el token se almacena al obtenerlo y el identificador de la
-notificación fallida se extrae del listado.
+Entre la carpeta 3 y la 4 conviene esperar unos quince segundos, el tiempo que tarda el ciclo
+de reintentos en agotarse. La petición 4.2 toma la notificación fallida sobre la que trabajan
+las siguientes, de modo que el reenvío actúe siempre sobre una que lo esté de verdad.
+
+Cada petición lleva comprobaciones. Se puede ejecutar entera desde el *Collection Runner* o
+desde la terminal:
+
+```bash
+npx newman run postman/cobre-notification-delivery.postman_collection.json
+```
+
+Los identificadores de evento se generan con la marca de tiempo, así que la colección se puede
+ejecutar tantas veces como haga falta sin chocar con lo anterior.
 
 ---
 

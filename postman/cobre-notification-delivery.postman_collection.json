@@ -1,0 +1,532 @@
+{
+  "info": {
+    "name": "Cobre — Entrega de notificaciones",
+    "description": "Recorrido completo, en orden de ejecucion.\n\nRequiere la infraestructura y los tres servicios corriendo:\n\n    docker compose --profile apps up -d --build\n\nLas peticiones encadenan variables entre si: el token y los identificadores de evento se guardan solos, asi que basta ejecutar la coleccion de arriba abajo.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "kafka_proxy_url",
+      "value": "http://localhost:8082"
+    },
+    {
+      "key": "kafka_topic",
+      "value": "cobre.platform.events"
+    },
+    {
+      "key": "client_id",
+      "value": "CLIENT002"
+    },
+    {
+      "key": "client_secret",
+      "value": "demo-secret-client002"
+    },
+    {
+      "key": "webhook_url",
+      "value": "http://localhost:9090/webhooks/CLIENT002"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "evento",
+      "value": ""
+    },
+    {
+      "key": "ok_event_id",
+      "value": ""
+    },
+    {
+      "key": "failed_event_id",
+      "value": ""
+    },
+    {
+      "key": "intentos_previos",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "1 · Preparacion",
+      "item": [
+        {
+          "name": "1.1 Obtener token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/oauth/token",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "oauth",
+                "token"
+              ]
+            },
+            "description": "Flujo client_credentials de OAuth2. El cuerpo va como formulario, que es la forma del RFC 6749; tambien se acepta JSON.\n\nEs POST y no GET: un GET llevaria el secreto en la URL, y las URLs quedan en el log del balanceador, en el historial y en la cabecera Referer.",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "client_credentials"
+                },
+                {
+                  "key": "client_id",
+                  "value": "{{client_id}}"
+                },
+                {
+                  "key": "client_secret",
+                  "value": "{{client_secret}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('emite el token', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('token', pm.response.json().access_token);",
+                  "pm.test('no se cachea', () =>",
+                  "  pm.expect(pm.response.headers.get('Cache-Control')).to.include('no-store'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.2 Registrar mi webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/subscriptions",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "subscriptions"
+              ]
+            },
+            "description": "El cliente registra el destino de sus notificaciones con su propio token.\n\nLa respuesta trae el signing_secret, y es la UNICA vez que viaja: con el se verifica la cabecera X-Cobre-Signature de cada notificacion. Repetir esta peticion con otra URL actualiza el destino y CONSERVA el secreto.\n\nOmitir event_type registra el comodin, que cubre todos los tipos.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"webhook_url\": \"{{webhook_url}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('registrado', () => pm.response.to.have.status(201));",
+                  "pm.test('entrega el secreto de firma', () =>",
+                  "  pm.expect(pm.response.json().signing_secret).to.match(/^whsec_/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.3 Ver mis webhooks",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/subscriptions",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "subscriptions"
+              ]
+            },
+            "description": "El listado NO devuelve los secretos. Devolverlos en cada consulta los expondria en cada log, cache y captura de pantalla."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde', () => pm.response.to.have.status(200));",
+                  "pm.test('sin secretos', () =>",
+                  "  pm.response.json().forEach(s => pm.expect(s.signing_secret).to.be.undefined));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2 · Flujo exitoso",
+      "item": [
+        {
+          "name": "2.1 Publicar un evento",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/vnd.kafka.json.v2+json"
+              }
+            ],
+            "url": {
+              "raw": "{{kafka_proxy_url}}/topics/{{kafka_topic}}",
+              "host": [
+                "{{kafka_proxy_url}}"
+              ],
+              "path": [
+                "topics",
+                "{{kafka_topic}}"
+              ]
+            },
+            "description": "Es lo unico que se hace. El servicio consume del bus, persiste, encola y entrega solo.\n\nEn la terminal del receptor aparece:\n\n    [EVT-OK-...] intento 1 -> respondo 200 | FIRMA OK",
+            "body": {
+              "mode": "raw",
+              "raw": "{{evento}}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = 'EVT-OK-' + Date.now();",
+                  "pm.collectionVariables.set('ok_event_id', id);",
+                  "pm.collectionVariables.set('evento', JSON.stringify({",
+                  "  records: [{ value: {",
+                  "    event_id: id,",
+                  "    client_id: 'CLIENT002',",
+                  "    event_type: 'credit_transfer',",
+                  "    content: 'Transferencia recibida',",
+                  "    created_at: new Date().toISOString().replace(/\\.\\d{3}/, '')",
+                  "  }}]",
+                  "}));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('el bus acepto el evento', () => pm.response.to.have.status(200));",
+                  "pm.test('devuelve la posicion en el topic', () =>",
+                  "  pm.expect(pm.response.json().offsets[0]).to.have.property('offset'));",
+                  "",
+                  "// El resto ocurre sin intervencion: consumer -> SQS -> worker -> webhook."
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3 · Flujo con reintento",
+      "item": [
+        {
+          "name": "3.1 Publicar un evento que el destino rechaza",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/vnd.kafka.json.v2+json"
+              }
+            ],
+            "url": {
+              "raw": "{{kafka_proxy_url}}/topics/{{kafka_topic}}",
+              "host": [
+                "{{kafka_proxy_url}}"
+              ],
+              "path": [
+                "topics",
+                "{{kafka_topic}}"
+              ]
+            },
+            "description": "El receptor de pruebas responde 503 a los eventos cuyo identificador contiene FALLA.\n\nLos reintentos son autonomos, con esperas crecientes y jitter:\n\n    intento 1 -> 503\n    intento 2 -> 503   (+3,2 s)\n    intento 3 -> 503   (+6,4 s)\n\nAgotados, la notificacion queda en failed y el mensaje va a la DLQ.",
+            "body": {
+              "mode": "raw",
+              "raw": "{{evento}}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = 'EVT-FALLA-' + Date.now();",
+                  "pm.collectionVariables.set('failed_event_id', id);",
+                  "pm.collectionVariables.set('evento', JSON.stringify({",
+                  "  records: [{ value: {",
+                  "    event_id: id,",
+                  "    client_id: 'CLIENT002',",
+                  "    event_type: 'credit_transfer',",
+                  "    content: 'Transferencia rechazada',",
+                  "    created_at: new Date().toISOString().replace(/\\.\\d{3}/, '')",
+                  "  }}]",
+                  "}));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('el bus acepto el evento', () => pm.response.to.have.status(200));",
+                  "pm.test('devuelve la posicion en el topic', () =>",
+                  "  pm.expect(pm.response.json().offsets[0]).to.have.property('offset'));",
+                  "",
+                  "// Esperar ~15 segundos antes de la carpeta 4."
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4 · Consulta y reenvio",
+      "item": [
+        {
+          "name": "4.1 Listar mis notificaciones",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notification_events?page=0&size=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notification_events"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Paginado y acotado al cliente del token. No existe ningun parametro para pedir los datos de otro: el client_id sale del token."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4.2 Filtrar las fallidas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notification_events?delivery_status=failed&size=5",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notification_events"
+              ],
+              "query": [
+                {
+                  "key": "delivery_status",
+                  "value": "failed"
+                },
+                {
+                  "key": "size",
+                  "value": "5"
+                }
+              ]
+            },
+            "description": "El filtro que usaria soporte para ver que quedo sin entregar.\n\nAdemas fija el evento sobre el que trabajan las peticiones siguientes, de modo que el reenvio actue siempre sobre una notificacion realmente fallida."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde', () => pm.response.to.have.status(200));",
+                  "const datos = pm.response.json().data;",
+                  "const aviso = 'Vacio: espera unos segundos, el ciclo de reintentos aun no se agota';",
+                  "pm.test('hay al menos una fallida', () => pm.expect(datos.length, aviso).to.be.above(0));",
+                  "if (datos.length) { pm.collectionVariables.set('failed_event_id', datos[0].event_id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4.3 Ver el detalle y su bitacora",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notification_events/{{failed_event_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notification_events",
+                "{{failed_event_id}}"
+              ]
+            },
+            "description": "La bitacora muestra cada intento con su codigo, su duracion y su error."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json();",
+                  "pm.test('esta en fallo definitivo', () => pm.expect(d.delivery_status).to.eql('failed'));",
+                  "pm.test('registro cada intento del ciclo', () =>",
+                  "  pm.expect(d.delivery_attempts.length).to.be.above(1));",
+                  "pm.collectionVariables.set('intentos_previos', d.delivery_attempts.length);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4.4 Reenviar",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notification_events/{{failed_event_id}}/replay",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notification_events",
+                "{{failed_event_id}}",
+                "replay"
+              ]
+            },
+            "description": "Responde 202 y no 200: queda encolado, no entregado. Si la API entregara en linea, la peticion quedaria atada al tiempo de respuesta del webhook y perderia reintentos, DLQ y bitacora.\n\nRepetirla de inmediato devuelve 409: ya no esta en fallo definitivo."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('encolado', () => pm.response.to.have.status(202));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4.5 Comprobar que la bitacora es acumulativa",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notification_events/{{failed_event_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notification_events",
+                "{{failed_event_id}}"
+              ]
+            },
+            "description": "Tras el reenvio, replay_count sube y los intentos del ciclo anterior siguen ahi. La bitacora es de solo adicion: el reenvio no borra la historia."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = pm.response.json();",
+                  "const previos = Number(pm.collectionVariables.get('intentos_previos'));",
+                  "pm.test('abrio un ciclo nuevo', () => pm.expect(d.replay_count).to.be.above(0));",
+                  "pm.test('la bitacora es acumulativa: conserva los intentos anteriores', () =>",
+                  "  pm.expect(d.delivery_attempts.length).to.be.at.least(previos));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "Ejecutar unos 15 segundos despues de la carpeta 3, para dar tiempo a que el ciclo de reintentos se agote. La peticion 4.2 toma la notificacion fallida sobre la que trabajan las siguientes."
+    }
+  ]
+}
