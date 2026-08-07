@@ -296,76 +296,13 @@
     },
     {
       "type": "timeseries",
-      "title": "Intentos de entrega por desenlace",
-      "description": "DELIVERED es lo normal. Un salto de RETRYABLE_FAILURE indica destinos degradados que todavia se recuperan; uno de PERMANENT_FAILURE, contratos rotos que hay que avisarle al cliente.",
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 18
-      },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "fillOpacity": 20,
-            "lineWidth": 2
-          },
-          "unit": "reqps"
-        }
-      },
-      "targets": [
-        {
-          "expr": "sum by (outcome) (rate(cobre_notification_delivery_attempts_total[1m]))",
-          "legendFormat": "{{outcome}}"
-        }
-      ]
-    },
-    {
-      "type": "timeseries",
-      "title": "Entregas cerradas: a la primera frente a recuperadas",
-      "description": "Si la franja de recuperadas crece, los destinos se estan degradando aunque el resultado final siga siendo bueno. Es una alerta temprana que el conteo de entregadas por si solo esconde.",
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 18
-      },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "fillOpacity": 25,
-            "lineWidth": 2,
-            "stacking": {
-              "mode": "normal"
-            }
-          },
-          "unit": "reqps"
-        }
-      },
-      "targets": [
-        {
-          "expr": "sum(rate(cobre_notification_settled_total{status=\"completed\", after_retries=\"false\"}[1m]))",
-          "legendFormat": "a la primera"
-        },
-        {
-          "expr": "sum(rate(cobre_notification_settled_total{status=\"completed\", after_retries=\"true\"}[1m]))",
-          "legendFormat": "recuperadas con reintentos"
-        },
-        {
-          "expr": "sum(rate(cobre_notification_settled_total{status=\"failed\"}[1m]))",
-          "legendFormat": "fallidas"
-        }
-      ]
-    },
-    {
-      "type": "timeseries",
       "title": "Clientes con entregas fallando",
       "description": "Que cliente se cayo, no solo cuantas entregas fallaron. Es la primera pregunta de guardia y la unica metrica etiquetada por cliente. Una linea que despega y no baja es un webhook caido: hay que avisarle a ese cliente.",
       "gridPos": {
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 27
+        "y": 18
       },
       "fieldConfig": {
         "defaults": {
@@ -391,7 +328,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 27
+        "y": 18
       },
       "fieldConfig": {
         "defaults": {
@@ -417,7 +354,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 36
+        "y": 27
       },
       "fieldConfig": {
         "defaults": {
