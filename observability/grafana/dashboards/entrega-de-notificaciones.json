@@ -342,6 +342,98 @@
           "legendFormat": "promedio"
         }
       ]
+    },
+    {
+      "type": "stat",
+      "title": "Tasa de exito",
+      "description": "Porcentaje de notificaciones cerradas que terminaron entregadas, en el rango seleccionado.",
+      "gridPos": {
+        "h": 4,
+        "w": 12,
+        "x": 0,
+        "y": 39
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 95
+              },
+              {
+                "color": "green",
+                "value": 99
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area"
+      },
+      "targets": [
+        {
+          "expr": "100 * sum(increase(cobre_notification_settled_total{status=\"completed\"}[$__range])) / clamp_min(sum(increase(cobre_notification_settled_total[$__range])), 1)",
+          "legendFormat": "Tasa de exito"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Tasa de error",
+      "description": "Porcentaje que termino en failed. Verde por debajo del 1 %, naranja hasta el 5 %, rojo por encima: es el umbral en el que corresponde alertar a guardia.",
+      "gridPos": {
+        "h": 4,
+        "w": 12,
+        "x": 12,
+        "y": 39
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area"
+      },
+      "targets": [
+        {
+          "expr": "100 * sum(increase(cobre_notification_settled_total{status=\"failed\"}[$__range])) / clamp_min(sum(increase(cobre_notification_settled_total[$__range])), 1)",
+          "legendFormat": "Tasa de error"
+        }
+      ]
     }
   ]
 }
