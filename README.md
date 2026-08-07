@@ -103,55 +103,39 @@ direcciones de conexión.
 
 ## 2. Arquitectura hexagonal
 
-Cada componente tiene su propia capa de aplicación y sus adaptadores. Lo único compartido es
-el interior del hexágono.
+![Arquitectura hexagonal](docs/img/arquitectura-hexagonal.svg)
 
-```
-cobre-notificacion-kit-lib/           modelo · reglas · puertos · adaptadores compartidos
-cobre-notificacion-consumer-service/  ingesta desde el bus
-cobre-notificacion-worker-service/    entrega y reintentos
-cobre-notificacion-api-service/       consulta y reenvío
-```
+Tres capas concéntricas y una sola regla: **las dependencias apuntan siempre hacia adentro.**
 
-Los sufijos dicen qué es cada uno: `-service` produce jar ejecutable, imagen y contenedor
-propios; `-lib` no arranca y viaja dentro de los tres.
+**Dominio.** El modelo del negocio: qué es una notificación, en qué estados puede estar, cuándo
+se puede reenviar, cuánto se espera entre reintentos. Y los puertos, que son las interfaces con
+las que le pide cosas al exterior.
 
-Cada módulo documenta lo suyo:
+**Aplicación.** Los casos de uso. Orquestan el dominio y los puertos, y no saben qué hay al otro
+lado: `DeliverNotificationEventService` pide «entrega esto» sin enterarse de que debajo hay un
+`WebClient`.
 
-| Módulo | Qué hace |
-|---|---|
-| [kit-lib](cobre-notificacion-kit-lib/README.md) | Modelo, reglas, puertos y los adaptadores que comparten |
-| [consumer-service](cobre-notificacion-consumer-service/README.md) | Consume el bus, persiste y encola |
-| [worker-service](cobre-notificacion-worker-service/README.md) | Entrega al webhook, reintenta y rinde a la DLQ |
-| [api-service](cobre-notificacion-api-service/README.md) | Consulta, reenvío y emisión de tokens |
+**Infraestructura.** Los adaptadores, que son lo único que conoce la tecnología. De entrada,
+los que traen trabajo: el consumidor de Kafka, el de la cola SQS y el controlador REST. De
+salida, los que implementan los puertos: R2DBC contra PostgreSQL, el cliente HTTP hacia el
+webhook del cliente, el productor de SQS y Micrometer.
 
-Los casos de uso viven donde se usan: ninguno lo comparten dos componentes. El modelo sí se
-comparte, porque los tres operan sobre las mismas tablas y la misma máquina de estados;
-duplicarlo no daría independencia sino divergencia.
+### Por qué importa aquí
 
-**`domain` no tiene Spring en el classpath**, así que la violación de la regla hexagonal no
-compila. Su única dependencia es Reactor, que es una librería de composición asíncrona y no un
-framework de infraestructura.
+Lo que se gana es **poder cambiar la tecnología sin tocar el negocio**. Sustituir PostgreSQL por
+un almacén clave-valor, o SQS por otra cola, afecta a un adaptador y a nadie más.
 
-Las dependencias apuntan siempre hacia el interior. Los paquetes `domain` y `application` no
-importan ninguna clase de Spring; el cableado reside en la clase de configuración de cada
-componente.
+Y no es una promesa: durante el desarrollo se cambió el sistema de mensajería completo —de un
+broker AMQP a Kafka más SQS— sin modificar una línea del dominio ni de los casos de uso.
 
-**Organización del código.** Los cinco módulos viven en un mismo repositorio. Es una decisión
-de organización, no de arquitectura: el diseño sería idéntico con repositorios separados y las
-dos librerías publicadas como artefactos versionados. El repositorio único evita ese ciclo de
-publicación en cada cambio del dominio, a cambio de que un cambio en él recompile los tres
-componentes.
+### Cómo se verifica que la regla se cumple
 
-Algo se traslada a `kit` cuando lo necesita un segundo componente, no antes: cada dependencia
-añadida allí la cargan los tres artefactos aunque dos no la utilicen. El criterio para
-distinguirlo de `domain` es directo: si sabe qué es una notificación, no es kit.
+Los paquetes `domain` y `application` no importan ninguna clase de Spring, y eso no depende de
+la disciplina de nadie: lo comprueba `DominioSinFrameworkTest`, que lee los fuentes y **falla el
+build** si aparece un import de Spring, R2DBC, Kafka, el SDK de AWS o Jackson.
 
-La consecuencia verificable es que las pruebas del dominio y de los casos de uso se ejecutan
-sin contexto de Spring, sin base de datos y sin broker.
-
-Sustituir el sistema de mensajería, la base de datos o el cliente HTTP afecta únicamente a
-los adaptadores correspondientes: ni el dominio ni los casos de uso cambian.
+La consecuencia práctica es que las pruebas del dominio y de los casos de uso corren sin
+contexto de Spring, sin base de datos y sin broker.
 
 ---
 
