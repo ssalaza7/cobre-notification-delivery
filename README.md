@@ -42,13 +42,10 @@ flowchart LR
     CON -->|encola| Q
     W -->|toma la orden<br/>y reencola reintentos| Q
     W -->|resuelve destino| SUB
-    W -->|registra intento| DB
     W -->|POST firmado HMAC| CLI
     W -->|reintentos agotados| DLQ
     Q -.->|mensaje no confirmado| DLQ
     USR -->|consulta · reenvía| API
-    API -->|consulta| DB
-    API -->|administra| SUB
     API -->|pide el token| IDP
     API -->|encola reenvío| Q
 
@@ -60,6 +57,10 @@ flowchart LR
 La línea punteada es el redrive automático de SQS; el resto son llamadas del componente. Ni el
 bus ni la cola empujan: el `consumer` y el `worker` piden con long polling, y por eso esas
 flechas salen de ellos.
+
+De cada almacén sale una sola línea, la de quien escribe primero. Los tres ejecutables leen y
+escriben en ambos: quién hace qué en cada paso está en los diagramas de secuencia de la
+sección 3, que es donde ese detalle se puede seguir.
 
 
 Dos caminos. El de la izquierda es automatico: un evento entra por el bus y sale por el
