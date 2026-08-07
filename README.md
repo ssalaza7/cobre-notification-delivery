@@ -105,37 +105,14 @@ direcciones de conexión.
 
 ![Arquitectura hexagonal](docs/img/arquitectura-hexagonal.svg)
 
-Tres capas concéntricas y una sola regla: **las dependencias apuntan siempre hacia adentro.**
+| Capa | Qué contiene |
+|---|---|
+| **Dominio** | El modelo y las reglas: estados, transiciones, política de reintentos. Y los puertos |
+| **Aplicación** | Los casos de uso. Orquestan el dominio y los puertos |
+| **Infraestructura** | Los adaptadores: Kafka, SQS, REST, R2DBC, WebClient, Micrometer |
 
-**Dominio.** El modelo del negocio: qué es una notificación, en qué estados puede estar, cuándo
-se puede reenviar, cuánto se espera entre reintentos. Y los puertos, que son las interfaces con
-las que le pide cosas al exterior.
-
-**Aplicación.** Los casos de uso. Orquestan el dominio y los puertos, y no saben qué hay al otro
-lado: `DeliverNotificationEventService` pide «entrega esto» sin enterarse de que debajo hay un
-`WebClient`.
-
-**Infraestructura.** Los adaptadores, que son lo único que conoce la tecnología. De entrada,
-los que traen trabajo: el consumidor de Kafka, el de la cola SQS y el controlador REST. De
-salida, los que implementan los puertos: R2DBC contra PostgreSQL, el cliente HTTP hacia el
-webhook del cliente, el productor de SQS y Micrometer.
-
-### Por qué importa aquí
-
-Lo que se gana es **poder cambiar la tecnología sin tocar el negocio**. Sustituir PostgreSQL por
-un almacén clave-valor, o SQS por otra cola, afecta a un adaptador y a nadie más.
-
-Y no es una promesa: durante el desarrollo se cambió el sistema de mensajería completo —de un
-broker AMQP a Kafka más SQS— sin modificar una línea del dominio ni de los casos de uso.
-
-### Cómo se verifica que la regla se cumple
-
-Los paquetes `domain` y `application` no importan ninguna clase de Spring, y eso no depende de
-la disciplina de nadie: lo comprueba `DominioSinFrameworkTest`, que lee los fuentes y **falla el
-build** si aparece un import de Spring, R2DBC, Kafka, el SDK de AWS o Jackson.
-
-La consecuencia práctica es que las pruebas del dominio y de los casos de uso corren sin
-contexto de Spring, sin base de datos y sin broker.
+Las dependencias apuntan siempre hacia adentro. `DominioSinFrameworkTest` falla el build si el
+dominio importa Spring, R2DBC, Kafka o el SDK de AWS.
 
 ---
 
