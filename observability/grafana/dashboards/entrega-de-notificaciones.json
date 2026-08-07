@@ -24,12 +24,13 @@
           "color": {
             "mode": "fixed",
             "fixedColor": "green"
-          }
+          },
+          "decimals": 0
         }
       },
       "targets": [
         {
-          "expr": "sum(increase(cobre_notification_settled_total{status=\"completed\"}[$__range])) or vector(0)",
+          "expr": "round(sum(increase(cobre_notification_settled_total{status=\"completed\"}[$__range])))) or vector(0)",
           "legendFormat": "entregadas"
         }
       ]
@@ -49,12 +50,13 @@
           "color": {
             "mode": "fixed",
             "fixedColor": "red"
-          }
+          },
+          "decimals": 0
         }
       },
       "targets": [
         {
-          "expr": "sum(increase(cobre_notification_settled_total{status=\"failed\"}[$__range])) or vector(0)",
+          "expr": "round(sum(increase(cobre_notification_settled_total{status=\"failed\"}[$__range])))) or vector(0)",
           "legendFormat": "fallidas"
         }
       ]
@@ -74,12 +76,13 @@
           "color": {
             "mode": "fixed",
             "fixedColor": "yellow"
-          }
+          },
+          "decimals": 0
         }
       },
       "targets": [
         {
-          "expr": "sum(increase(cobre_notification_settled_total{status=\"completed\", after_retries=\"true\"}[$__range])) or vector(0)",
+          "expr": "round(sum(increase(cobre_notification_settled_total{status=\"completed\", after_retries=\"true\"}[$__range])))) or vector(0)",
           "legendFormat": "recuperadas"
         }
       ]
@@ -99,12 +102,13 @@
           "color": {
             "mode": "fixed",
             "fixedColor": "orange"
-          }
+          },
+          "decimals": 0
         }
       },
       "targets": [
         {
-          "expr": "sum(increase(cobre_notification_settled_total{status=\"failed\", after_retries=\"true\"}[$__range])) or vector(0)",
+          "expr": "round(sum(increase(cobre_notification_settled_total{status=\"failed\", after_retries=\"true\"}[$__range])))) or vector(0)",
           "legendFormat": "agotadas"
         }
       ]
@@ -124,12 +128,13 @@
           "color": {
             "mode": "fixed",
             "fixedColor": "blue"
-          }
+          },
+          "decimals": 0
         }
       },
       "targets": [
         {
-          "expr": "sum(increase(cobre_notification_replay_requested_total[$__range])) or vector(0)",
+          "expr": "round(sum(increase(cobre_notification_replay_requested_total[$__range])))) or vector(0)",
           "legendFormat": "reenvios"
         }
       ]
