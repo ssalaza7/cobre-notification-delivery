@@ -19,39 +19,52 @@ GET  /subscriptions                    las suscripciones del cliente
 ## 1. Arquitectura
 
 ```mermaid
-flowchart TB
+%%{init: {"flowchart": {"curve": "basis"}}}%%
+flowchart LR
     SVC["Servicios de la plataforma<br/>pagos · transferencias · saldos"]
     K[("Kafka<br/>cobre.platform.events")]
-    CON["<b>consumer</b><br/>ingesta y encola"]
-    Q[("SQS<br/>cola de entrega")]
-    W["<b>worker</b><br/>entrega y reintenta"]
-    DLQ[("SQS<br/>DLQ")]
-
     USR["Cliente"]
-    API["<b>api</b><br/>consulta y reenvío"]
-    IDP["Proveedor de identidad<br/>OIDC"]
-    HOOK["Webhook del cliente"]
 
-    DB[("DynamoDB<br/>notificaciones · intentos · suscripciones")]
+    CON["<b>consumer</b><br/>ingesta y encola"]
+    W["<b>worker</b><br/>entrega y reintenta"]
+    API["<b>api</b><br/>consulta y reenvío"]
+
+    Q[("SQS<br/>cola de entrega")]
+    DLQ[("SQS<br/>DLQ")]
+    HOOK["Webhook del cliente"]
+    IDP["Proveedor de identidad<br/>OIDC"]
+
+    DB[("DynamoDB<br/>notificaciones + intentos")]
+    SUB[("DynamoDB<br/>suscripciones")]
 
     SVC -- "publica" --> K
-    K --> CON
+    CON -- "sondea" --> K
     CON -- "encola" --> Q
-    Q --> W
+    W -- "sondea y reencola" --> Q
     W -- "reintentos agotados" --> DLQ
+    Q -. "redrive automático" .-> DLQ
     W -- "POST firmado HMAC" --> HOOK
-
-    USR --> API
+    USR -- "consulta y reenvía" --> API
     API -- "pide el token" --> IDP
+    API -- "encola el reenvío" --> Q
 
-    CON -. "leen y escriben" .-> DB
-    W -.-> DB
-    API -.-> DB
+    CON -- "persiste" --> DB
+    W -- "estado e intento" --> DB
+    API -- "consulta" --> DB
+    W -- "resuelve destino" --> SUB
+    API -- "administra" --> SUB
 
     style CON fill:#1f6feb,color:#fff,stroke:none
     style W fill:#1f6feb,color:#fff,stroke:none
     style API fill:#1f6feb,color:#fff,stroke:none
 ```
+
+Ni el bus ni la cola empujan: el `consumer` y el `worker` piden con long polling, y por eso
+las flechas salen de quien inicia la llamada. La punteada es el redrive automatico de SQS,
+lo unico que ocurre sin que ningun componente lo pida.
+
+> El mismo diagrama esta en [`docs/img/arquitectura.drawio`](docs/img/arquitectura.drawio),
+> editable con [draw.io](https://app.diagrams.net) si hace falta recolocar algo.
 
 Dos caminos. El de la izquierda es automatico: un evento entra por el bus y sale por el
 webhook del cliente. El de la derecha lo inicia el cliente cuando consulta o pide un reenvio.

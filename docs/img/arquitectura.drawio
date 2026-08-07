@@ -1,76 +1,88 @@
 <mxfile host="app.diagrams.net" agent="cobre-notification-delivery" version="24.7.17">
   <diagram name="Arquitectura" id="arquitectura">
-    <mxGraphModel dx="1600" dy="1300" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="1240" math="0" shadow="0">
+    <mxGraphModel dx="1700" dy="1100" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1000" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="svcExt" value="Servicios de la plataforma&#10;pagos · transferencias · saldos" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f6f8fa;strokeColor=#8c959f;fontSize=14;" vertex="1" parent="1">
-          <mxGeometry x="120" y="60" width="300" height="80" as="geometry" />
-        </mxCell>
-        <mxCell id="kafka" value="Kafka&#10;cobre.platform.events" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=12;whiteSpace=wrap;html=1;fillColor=#f6f8fa;strokeColor=#8c959f;fontSize=14;" vertex="1" parent="1">
-          <mxGeometry x="120" y="220" width="300" height="90" as="geometry" />
-        </mxCell>
-        <mxCell id="consumer" value="consumer&#10;ingesta y encola" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1f6feb;strokeColor=none;fontColor=#ffffff;fontSize=15;fontStyle=1" vertex="1" parent="1">
-          <mxGeometry x="120" y="390" width="300" height="80" as="geometry" />
-        </mxCell>
         <mxCell id="sqs" value="SQS&#10;cola de entrega" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=12;whiteSpace=wrap;html=1;fillColor=#fff8dc;strokeColor=#b8860b;fontSize=14;" vertex="1" parent="1">
-          <mxGeometry x="120" y="550" width="300" height="90" as="geometry" />
-        </mxCell>
-        <mxCell id="worker" value="worker&#10;entrega y reintenta" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1f6feb;strokeColor=none;fontColor=#ffffff;fontSize=15;fontStyle=1" vertex="1" parent="1">
-          <mxGeometry x="120" y="720" width="300" height="80" as="geometry" />
+          <mxGeometry x="620" y="60" width="300" height="90" as="geometry" />
         </mxCell>
         <mxCell id="dlq" value="SQS&#10;DLQ" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=12;whiteSpace=wrap;html=1;fillColor=#fff8dc;strokeColor=#b8860b;fontSize=14;" vertex="1" parent="1">
-          <mxGeometry x="120" y="880" width="300" height="90" as="geometry" />
+          <mxGeometry x="1020" y="60" width="300" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="svcExt" value="Servicios de la plataforma&#10;pagos · transferencias · saldos" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f6f8fa;strokeColor=#8c959f;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="60" y="260" width="280" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="kafka" value="Kafka&#10;cobre.platform.events" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=12;whiteSpace=wrap;html=1;fillColor=#f6f8fa;strokeColor=#8c959f;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="60" y="420" width="280" height="90" as="geometry" />
         </mxCell>
         <mxCell id="usr" value="Cliente&#10;consulta y reenvía" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f6f8fa;strokeColor=#8c959f;fontSize=14;" vertex="1" parent="1">
-          <mxGeometry x="700" y="60" width="300" height="80" as="geometry" />
+          <mxGeometry x="60" y="620" width="280" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="consumer" value="consumer&#10;ingesta y encola" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1f6feb;strokeColor=none;fontColor=#ffffff;fontSize=15;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="640" y="260" width="280" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="worker" value="worker&#10;entrega y reintenta" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1f6feb;strokeColor=none;fontColor=#ffffff;fontSize=15;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="640" y="440" width="280" height="80" as="geometry" />
         </mxCell>
         <mxCell id="api" value="api&#10;consulta y reenvío" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1f6feb;strokeColor=none;fontColor=#ffffff;fontSize=15;fontStyle=1" vertex="1" parent="1">
-          <mxGeometry x="700" y="390" width="300" height="80" as="geometry" />
-        </mxCell>
-        <mxCell id="idp" value="Proveedor de identidad&#10;OIDC" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f6f8fa;strokeColor=#8c959f;fontSize=14;" vertex="1" parent="1">
-          <mxGeometry x="700" y="550" width="300" height="80" as="geometry" />
+          <mxGeometry x="640" y="620" width="280" height="80" as="geometry" />
         </mxCell>
         <mxCell id="hook" value="Webhook del cliente" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f6f8fa;strokeColor=#8c959f;fontSize=14;" vertex="1" parent="1">
-          <mxGeometry x="700" y="720" width="300" height="80" as="geometry" />
+          <mxGeometry x="1240" y="440" width="280" height="80" as="geometry" />
         </mxCell>
-        <mxCell id="db" value="DynamoDB&#10;notificaciones · intentos · suscripciones" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=12;whiteSpace=wrap;html=1;fillColor=#e6f4ea;strokeColor=#2da44e;fontSize=15;" vertex="1" parent="1">
-          <mxGeometry x="120" y="1060" width="880" height="100" as="geometry" />
+        <mxCell id="idp" value="Proveedor de identidad&#10;OIDC" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f6f8fa;strokeColor=#8c959f;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="620" width="280" height="80" as="geometry" />
         </mxCell>
-        <mxCell id="nota" value="los tres ejecutables leen y escriben" style="text;html=1;align=center;verticalAlign=middle;fontSize=13;fontColor=#57606a;" vertex="1" parent="1">
-          <mxGeometry x="420" y="1000" width="280" height="30" as="geometry" />
+        <mxCell id="eventos" value="DynamoDB&#10;notificaciones + intentos" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=12;whiteSpace=wrap;html=1;fillColor=#e6f4ea;strokeColor=#2da44e;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="420" y="840" width="320" height="90" as="geometry" />
         </mxCell>
-        <mxCell id="a1" value="publica" style="edgeStyle=none;rounded=0;html=1;fontSize=13;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="svcExt" target="kafka">
+        <mxCell id="subs" value="DynamoDB&#10;suscripciones" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=12;whiteSpace=wrap;html=1;fillColor=#e6f4ea;strokeColor=#2da44e;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="840" y="840" width="320" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="a1" value="publica" style="edgeStyle=orthogonalEdgeStyle;curved=1;html=1;fontSize=13;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="svcExt" target="kafka">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="a2" value="" style="edgeStyle=none;rounded=0;html=1;fontSize=13;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="kafka" target="consumer">
+        <mxCell id="a2" value="sondea" style="edgeStyle=orthogonalEdgeStyle;curved=1;html=1;fontSize=13;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.25;entryDx=0;entryDy=0;" edge="1" parent="1" source="consumer" target="kafka">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="a3" value="encola" style="edgeStyle=none;rounded=0;html=1;fontSize=13;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="consumer" target="sqs">
+        <mxCell id="a3" value="encola" style="edgeStyle=orthogonalEdgeStyle;curved=1;html=1;fontSize=13;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="consumer" target="sqs">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="a4" value="" style="edgeStyle=none;rounded=0;html=1;fontSize=13;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="sqs" target="worker">
+        <mxCell id="a4" value="sondea y reencola" style="edgeStyle=orthogonalEdgeStyle;curved=1;html=1;fontSize=13;exitX=0.25;exitY=0;exitDx=0;exitDy=0;entryX=0.25;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="worker" target="sqs">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="a5" value="reintentos agotados" style="edgeStyle=none;rounded=0;html=1;fontSize=13;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="worker" target="dlq">
+        <mxCell id="a5" value="reintentos agotados" style="edgeStyle=orthogonalEdgeStyle;curved=1;html=1;fontSize=13;exitX=0.75;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="worker" target="dlq">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="a6" value="POST firmado HMAC" style="edgeStyle=none;rounded=0;html=1;fontSize=13;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="worker" target="hook">
+        <mxCell id="a6" value="redrive automático" style="edgeStyle=orthogonalEdgeStyle;curved=1;html=1;fontSize=13;dashed=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="sqs" target="dlq">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="a7" value="" style="edgeStyle=none;rounded=0;html=1;fontSize=13;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="usr" target="api">
+        <mxCell id="a7" value="POST firmado HMAC" style="edgeStyle=orthogonalEdgeStyle;curved=1;html=1;fontSize=13;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="worker" target="hook">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="a8" value="pide el token" style="edgeStyle=none;rounded=0;html=1;fontSize=13;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="api" target="idp">
+        <mxCell id="a8" value="consulta y reenvía" style="edgeStyle=orthogonalEdgeStyle;curved=1;html=1;fontSize=13;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="usr" target="api">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="a9" value="" style="edgeStyle=none;rounded=0;html=1;fontSize=13;dashed=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.15;entryDx=0;entryDy=0;" edge="1" parent="1" source="consumer" target="db">
+        <mxCell id="a9" value="pide el token" style="edgeStyle=orthogonalEdgeStyle;curved=1;html=1;fontSize=13;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="api" target="idp">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="a10" value="" style="edgeStyle=none;rounded=0;html=1;fontSize=13;dashed=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="worker" target="db">
+        <mxCell id="a10" value="encola el reenvío" style="edgeStyle=orthogonalEdgeStyle;curved=1;html=1;fontSize=13;exitX=0.75;exitY=0;exitDx=0;exitDy=0;entryX=0.75;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="api" target="sqs">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="a11" value="" style="edgeStyle=none;rounded=0;html=1;fontSize=13;dashed=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="api" target="db">
+        <mxCell id="a11" value="persiste" style="edgeStyle=orthogonalEdgeStyle;curved=1;html=1;fontSize=13;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="consumer" target="eventos">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a12" value="estado e intento" style="edgeStyle=orthogonalEdgeStyle;curved=1;html=1;fontSize=13;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="worker" target="eventos">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a13" value="consulta" style="edgeStyle=orthogonalEdgeStyle;curved=1;html=1;fontSize=13;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0.25;entryDx=0;entryDy=0;" edge="1" parent="1" source="api" target="eventos">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a14" value="resuelve destino" style="edgeStyle=orthogonalEdgeStyle;curved=1;html=1;fontSize=13;exitX=0.75;exitY=1;exitDx=0;exitDy=0;entryX=0.25;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="worker" target="subs">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a15" value="administra" style="edgeStyle=orthogonalEdgeStyle;curved=1;html=1;fontSize=13;exitX=0.75;exitY=1;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="api" target="subs">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
       </root>
