@@ -1,145 +1,119 @@
 plugins {
     java
     jacoco
-    id("org.springframework.boot") version "4.0.7"
-}
-
-group = "com.cobre"
-version = "0.0.1-SNAPSHOT"
-description = "Entrega de notificaciones de eventos via webhook y API self-service (Cobre)"
-
-java {
-    // Toolchain y no sourceCompatibility: Gradle localiza (o descarga) un JDK 21
-    // aunque el demonio corra sobre otra version, asi la compilacion es reproducible
-    // en cualquier maquina y en CI.
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
-}
-
-repositories {
-    mavenCentral()
+    id("org.springframework.boot") version "4.0.7" apply false
 }
 
 val springBootVersion = "4.0.7"
 val awsSdkVersion = "2.31.78"
-val reactorKafkaVersion = "1.3.23"
 val kafkaClientsVersion = "3.9.1"
 
-configurations.all {
-    // Boot 4 sube kafka-clients a 4.x y elimina constructores contra los que
-    // reactor-kafka 1.3.23 esta compilado (NoSuchMethodError en ConsumerRecord). Se fija
-    // la ultima 3.x, que es con la que esa version funciona.
-    resolutionStrategy.force("org.apache.kafka:kafka-clients:$kafkaClientsVersion")
+allprojects {
+    group = "com.cobre"
+    version = "0.0.1-SNAPSHOT"
+    repositories { mavenCentral() }
 }
 
-dependencies {
-    val bom = platform("org.springframework.boot:spring-boot-dependencies:$springBootVersion")
-    implementation(bom)
-    testImplementation(bom)
+subprojects {
+    apply(plugin = "java")
+    apply(plugin = "jacoco")
 
-    // Adaptador de entrada web (no bloqueante)
-    implementation("org.springframework.boot:spring-boot-starter-webflux")
-    implementation("org.springframework.boot:spring-boot-starter-validation")
+    extensions.configure<JavaPluginExtension> {
+        // Toolchain y no sourceCompatibility: Gradle localiza (o descarga) un JDK 21
+        // aunque el demonio corra sobre otra version, asi la compilacion es
+        // reproducible en cualquier maquina y en CI.
+        toolchain { languageVersion = JavaLanguageVersion.of(21) }
+    }
 
-    // Seguridad: JWT HS256 como resource server reactivo
-    implementation("org.springframework.boot:spring-boot-starter-security")
-    implementation("org.springframework.security:spring-security-oauth2-resource-server")
-    implementation("org.springframework.security:spring-security-oauth2-jose")
+    dependencies {
+        val bom = platform("org.springframework.boot:spring-boot-dependencies:$springBootVersion")
+        add("implementation", bom)
+        add("testImplementation", bom)
+        add("testImplementation", "org.junit.jupiter:junit-jupiter")
+        add("testImplementation", "org.mockito:mockito-core")
+        add("testImplementation", "org.assertj:assertj-core")
+        add("testImplementation", "io.projectreactor:reactor-test")
+        add("testRuntimeOnly", "org.junit.platform:junit-platform-launcher")
+    }
 
-    // Adaptador de salida de persistencia
-    implementation("org.springframework.boot:spring-boot-starter-data-r2dbc")
-    runtimeOnly("org.postgresql:r2dbc-postgresql")
-
-    // Flyway corre sobre JDBC una sola vez al arrancar; el runtime sigue siendo R2DBC.
-    // En Spring Boot 4 la autoconfiguracion de Flyway vive en su propio modulo y
-    // necesita un DataSource: sin spring-boot-flyway y el starter JDBC, flyway-core
-    // queda en el classpath pero las migraciones nunca corren.
-    implementation("org.springframework.boot:spring-boot-flyway")
-    implementation("org.springframework.boot:spring-boot-starter-jdbc")
-    implementation("org.flywaydb:flyway-database-postgresql")
-    runtimeOnly("org.postgresql:postgresql")
-
-    // Mensajeria: Kafka como bus de eventos, SQS como cola de trabajo.
-    // Ambos entran por puertos, asi que el dominio no sabe que existen.
-    implementation("io.projectreactor.kafka:reactor-kafka:$reactorKafkaVersion")
-    implementation(platform("software.amazon.awssdk:bom:$awsSdkVersion"))
-    implementation("software.amazon.awssdk:sqs")
-    implementation("software.amazon.awssdk:netty-nio-client")
-
-    // Observabilidad. Los dos registries conviven: el codigo publica una sola vez a
-    // traves de MetricsPort y Micrometer se encarga de alimentar a quien este activo.
-    // Datadog viene desactivado y solo se enciende con COBRE_DATADOG_ENABLED=true.
-    implementation("org.springframework.boot:spring-boot-starter-actuator")
-    implementation("io.micrometer:micrometer-registry-prometheus")
-    implementation("io.micrometer:micrometer-registry-datadog")
-    // Propagacion de ThreadLocal (el MDC) a traves de los saltos de hilo de Reactor.
-    implementation("io.micrometer:context-propagation")
-
-    testImplementation("org.springframework.boot:spring-boot-starter-webflux-test")
-    testImplementation("org.springframework.boot:spring-boot-starter-validation-test")
-    testImplementation("org.springframework.boot:spring-boot-starter-actuator-test")
-    testImplementation("org.springframework.security:spring-security-test")
-    testImplementation("io.projectreactor:reactor-test")
+    tasks.withType<Test>().configureEach {
+        useJUnitPlatform()
+        testLogging {
+            events("failed")
+            exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.SHORT
+        }
+    }
 }
+
+// Constantes que los modulos consumen desde su propio build.
+extra["awsSdkVersion"] = awsSdkVersion
+extra["kafkaClientsVersion"] = kafkaClientsVersion
 
 /*
- * Se excluyen de la cobertura el arranque, el cableado de beans y los adaptadores de
- * persistencia: su comportamiento no se puede verificar sin una base de datos real,
- * asi que se cubren con la verificacion end-to-end documentada en el README. El
- * siguiente paso natural es Testcontainers, que los traeria de vuelta al gate.
+ * Gate de cobertura agregado sobre los cuatro modulos.
+ *
+ * Se mide el conjunto y no cada modulo por separado: la logica vive en `common` y los
+ * ejecutables son sobre todo cableado, asi que un umbral por modulo penalizaria a los
+ * tres ejecutables por algo que no es falta de pruebas sino reparto de responsabilidades.
  */
 val coverageExclusions = listOf(
-    "**/NotificationDeliveryServiceApplication.class",
+    "**/*Application.class",
     "**/infrastructure/config/**",
     "**/infrastructure/adapter/out/persistence/**",
 )
 
-fun coveredClasses() = files(
-    sourceSets.main.get().output.classesDirs.map { dir ->
-        fileTree(dir) { exclude(coverageExclusions) }
+val modulosCubiertos = subprojects
+
+fun Project.clasesCubiertas() = files(
+    modulosCubiertos.map { m ->
+        m.extensions.getByType<SourceSetContainer>()["main"].output.classesDirs.map { dir ->
+            fileTree(dir) { exclude(coverageExclusions) }
+        }
     }
 )
 
-tasks.test {
-    useJUnitPlatform()
-    finalizedBy(tasks.jacocoTestReport)
-    testLogging {
-        events("failed")
-        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.SHORT
-    }
-}
+val jacocoReporteAgregado by tasks.registering(JacocoReport::class) {
+    group = "verification"
+    description = "Cobertura agregada de los cuatro modulos"
+    dependsOn(modulosCubiertos.map { it.tasks.named("test") })
 
-tasks.jacocoTestReport {
-    dependsOn(tasks.test)
-    classDirectories.setFrom(coveredClasses())
+    executionData.setFrom(files(modulosCubiertos.map { it.layout.buildDirectory.file("jacoco/test.exec") })
+        .filter { it.exists() })
+    sourceDirectories.setFrom(files(modulosCubiertos.map {
+        it.extensions.getByType<SourceSetContainer>()["main"].allSource.srcDirs
+    }))
+    classDirectories.setFrom(clasesCubiertas())
+
     reports {
         html.required = true
         xml.required = true
     }
 }
 
-tasks.jacocoTestCoverageVerification {
-    dependsOn(tasks.jacocoTestReport)
-    classDirectories.setFrom(coveredClasses())
+val jacocoGate by tasks.registering(JacocoCoverageVerification::class) {
+    group = "verification"
+    description = "Falla si la cobertura agregada baja del 90%"
+    dependsOn(jacocoReporteAgregado)
+
+    executionData.setFrom(files(modulosCubiertos.map { it.layout.buildDirectory.file("jacoco/test.exec") })
+        .filter { it.exists() })
+    sourceDirectories.setFrom(files(modulosCubiertos.map {
+        it.extensions.getByType<SourceSetContainer>()["main"].allSource.srcDirs
+    }))
+    classDirectories.setFrom(clasesCubiertas())
+
     violationRules {
         rule {
             element = "BUNDLE"
             limit {
-                counter = "LINE"
-                value = "COVEREDRATIO"
-                minimum = "0.90".toBigDecimal()
+                counter = "LINE"; value = "COVEREDRATIO"; minimum = "0.90".toBigDecimal()
             }
             limit {
-                counter = "INSTRUCTION"
-                value = "COVEREDRATIO"
-                minimum = "0.90".toBigDecimal()
+                counter = "INSTRUCTION"; value = "COVEREDRATIO"; minimum = "0.90".toBigDecimal()
             }
         }
     }
 }
 
-// El gate de cobertura corre con `./gradlew build`, no solo cuando se pide aparte.
-tasks.check {
-    dependsOn(tasks.jacocoTestCoverageVerification)
-}
+// El gate corre con `./gradlew build` en la raiz, no solo cuando se pide aparte.
+tasks.named("build") { dependsOn(jacocoGate) }

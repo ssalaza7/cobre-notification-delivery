@@ -63,7 +63,7 @@ comodín.
 
 ```bash
 WEBHOOK_OVERRIDE_URL=https://el-destino/webhook \
-java -jar build/libs/notification-delivery-service-0.0.1-SNAPSHOT.jar
+java -jar cobre-notificacion-worker-service/build/libs/cobre-notificacion-worker-service-0.0.1-SNAPSHOT.jar
 ```
 
 Tiene precedencia sobre las suscripciones almacenadas. Está previsto para escenarios en los
@@ -183,6 +183,16 @@ notificación fallida se extrae del listado.
 ```bash
 docker compose --profile observability up -d
 ```
+
+| Proceso | Puerto |
+|---|---|
+| `api` | 8080 |
+| `worker` | 8081 |
+| `consumer` | 8083 |
+
+Los tres exponen `/actuator/health` y `/actuator/prometheus`. El consumidor y el worker no
+sirven tráfico de negocio por HTTP: el servidor existe para las sondas del orquestador y para
+que Prometheus pueda raspar sus métricas.
 
 | Consola | URL |
 |---|---|

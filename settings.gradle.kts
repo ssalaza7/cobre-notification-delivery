@@ -1,8 +1,12 @@
-plugins {
-    // Resuelve (y descarga si hace falta) el JDK que pide la toolchain del build.
-    // Sin esto, quien clone el repo necesita tener un JDK 21 en una ruta que Gradle
-    // sepa escanear; con esto basta con tener Gradle y conexion.
-    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
-}
+rootProject.name = "cobre-notification-delivery"
 
-rootProject.name = "notification-delivery-service"
+// Tres servicios desplegables y una libreria que comparten.
+//
+// Los sufijos dicen que es cada uno: -service produce jar ejecutable, imagen y
+// contenedor propios; -lib no arranca y viaja dentro de los tres.
+include(
+    "cobre-notificacion-consumer-service",
+    "cobre-notificacion-worker-service",
+    "cobre-notificacion-api-service",
+    "cobre-notificacion-kit-lib",
+)

@@ -1,0 +1,39 @@
+# Perfil de desarrollo y demostracion local.
+#
+# Apunta los webhooks a un receptor HTTP en localhost y acorta los retardos de reintento
+# para poder verlos completos mientras se explican.
+spring:
+  flyway:
+    # Carga tambien las credenciales de demostracion, que no existen en produccion.
+    locations: classpath:db/migration,classpath:db/demo
+
+cobre:
+  sqs:
+    # Emulador local de SQS. Se respeta la variable para que el mismo perfil sirva
+    # ejecutando en la maquina y dentro de la red de compose.
+    endpoint: ${SQS_ENDPOINT:http://localhost:9324}
+
+  webhook:
+    require-https: false
+    block-internal-addresses: false
+
+  retry:
+    # Tres intentos en unos diez segundos: alcanza a agotarse mientras se explica, y
+    # sigue siendo backoff exponencial con jitter de verdad.
+    max-attempts: 3
+    delays: 3s, 6s, 10s
+
+
+logging:
+  level:
+    com.cobre.notifications: DEBUG
+
+  # En local la consola vuelve a ser legible para humanos y el JSON en ECS se escribe a
+  # un archivo, que es lo que consume Filebeat en el stack de observabilidad local.
+  # Asi se puede seguir la demo en la terminal y a la vez verla en Kibana.
+  structured:
+    format:
+      console: ""
+      file: ecs
+  file:
+    name: logs/notification-delivery-service.json

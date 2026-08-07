@@ -157,5 +157,69 @@ services:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
 
+  # ---------------------------------------------------------------------------
+  # Los tres servicios. Perfil propio para que `docker compose up -d` siga
+  # levantando solo la infraestructura cuando se ejecutan desde el IDE.
+  #
+  #   docker compose --profile apps up -d --build
+  # ---------------------------------------------------------------------------
+  consumer:
+    build:
+      # El contexto es la raiz: la construccion necesita el kit y los archivos de Gradle.
+      context: .
+      dockerfile: cobre-notificacion-consumer-service/Dockerfile
+    container_name: cobre-notificaciones-consumer
+    profiles: ["apps"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redpanda: {condition: service_healthy}
+      elasticmq: {condition: service_started}
+    environment: &entorno-comun
+      SPRING_PROFILES_ACTIVE: local
+      JWT_SECRET: ${JWT_SECRET:?define JWT_SECRET en .env}
+      DB_HOST: postgres
+      # 29092 y no 9092: la escucha externa anuncia localhost, que desde dentro de la
+      # red de compose no resuelve al broker.
+      KAFKA_BOOTSTRAP: redpanda:29092
+      SQS_ENDPOINT: http://elasticmq:9324
+      SQS_DELIVERY_QUEUE: http://elasticmq:9324/000000000000/notifications-delivery
+      SQS_DLQ: http://elasticmq:9324/000000000000/notifications-dlq
+    ports:
+      - "${CONSUMER_PORT:-8083}:8083"
+
+  worker:
+    build:
+      context: .
+      dockerfile: cobre-notificacion-worker-service/Dockerfile
+    container_name: cobre-notificaciones-worker
+    profiles: ["apps"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      elasticmq: {condition: service_started}
+    environment:
+      <<: *entorno-comun
+      SERVER_PORT: 8081
+      # El receptor de pruebas corre en la maquina anfitriona, no en la red de compose.
+      WEBHOOK_OVERRIDE_URL: ${WEBHOOK_OVERRIDE_URL:-http://host.docker.internal:9090/webhooks/demo}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${WORKER_PORT:-8081}:8081"
+
+  api:
+    build:
+      context: .
+      dockerfile: cobre-notificacion-api-service/Dockerfile
+    container_name: cobre-notificaciones-api
+    profiles: ["apps"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      elasticmq: {condition: service_started}
+    environment:
+      <<: *entorno-comun
+      SERVER_PORT: 8080
+    ports:
+      - "${API_PORT:-8080}:8080"
+
 volumes:
   postgres-data:

@@ -28,7 +28,7 @@ entregar, reintentar, registrar) y **self-service** (consultar, ver detalle, ree
 flowchart TB
     subgraph cobre["Plataforma Cobre"]
         platform["Microservicios de la plataforma<br/>cuentas · pagos · transacciones"]
-        svc["<b>Notification Delivery Service</b><br/>entrega de webhooks + API self-service"]
+        svc["<b>Entrega de notificaciones</b><br/>webhooks + API self-service"]
     end
 
     client_sys["Sistema del cliente<br/>(endpoint webhook HTTPS)"]
@@ -38,7 +38,7 @@ flowchart TB
     platform -- "eventos de negocio" --> svc
     svc -- "POST firmado con HMAC" --> client_sys
     client_dev -- "GET / POST replay<br/>API REST autenticada" --> svc
-    svc -- "logs y métricas" --> monitoring
+    svc -. "logs y métricas" .-> monitoring
 
     style svc fill:#1f6feb,color:#fff
 ```
@@ -56,9 +56,10 @@ flowchart TB
     platform["Microservicios<br/>de la plataforma"]
     bus[("Bus de eventos<br/>de la plataforma")]
 
-    subgraph service["Notification Delivery Service · un microservicio"]
-        api["<b>API self-service</b><br/>Spring WebFlux<br/>GET · GET/id · POST replay"]
-        worker["<b>Worker de entrega</b><br/>consume, entrega, reintenta"]
+    subgraph service["Entrega de notificaciones"]
+        consumer["<b>consumer</b><br/>consume el bus y encola"]
+        worker["<b>worker</b><br/>entrega y reintenta"]
+        api["<b>api</b><br/>GET · GET/id · POST replay"]
     end
 
     subgraph queues["Cola de trabajo"]
@@ -70,10 +71,14 @@ flowchart TB
     hook["Webhook del cliente"]
     obs["Logs y métricas"]
 
-    platform --> bus --> worker
-    worker <--> dq
-    worker -- "reintentos agotados" --> dlq
+    platform --> bus --> consumer
+    consumer --> db
+    consumer --> dq
+    dq -- "orden de entrega" --> worker
     worker -- "POST firmado" --> hook
+    worker -- "reintento con retardo" --> dq
+    worker -- "reintentos agotados" --> dlq
+    dq -. "mensaje no confirmado" .-> dlq
     worker --> db
     api --> db
     api -- "replay" --> dq
@@ -81,12 +86,21 @@ flowchart TB
 
     style api fill:#1f6feb,color:#fff
     style worker fill:#1f6feb,color:#fff
+    style consumer fill:#1f6feb,color:#fff
 ```
 
-### Un microservicio, dos roles de ejecución
+Las líneas punteadas son telemetría: la aplicación escribe a stdout y publica en su endpoint
+de métricas, y son el recolector de logs y el agente de Datadog quienes las extraen. Ningún
+componente llama a OpenSearch ni a Datadog.
 
-La API y el worker son el mismo artefacto desplegado dos veces: mismo contenedor, distintos
-adaptadores activos.
+### Tres componentes, un dominio
+
+El sistema se despliega como tres componentes independientes: uno ingesta del bus, otro
+entrega y reintenta, y el tercero atiende la API self-service. Cada uno es un artefacto propio
+que carga únicamente las dependencias que usa: el cliente de Kafka existe solo en el
+consumidor, el cliente HTTP saliente solo en el worker y la cadena de seguridad web solo en la
+API. La selección de adaptadores la determina el classpath, no una condición evaluada al
+arrancar.
 
 **Despliegues separados, sí.** Los perfiles de carga son independientes: la API responde a
 personas y paneles, mientras que el worker sigue el ritmo de la plataforma y puede tener que
@@ -94,14 +108,24 @@ drenar millones de eventos en cualquier momento. Escalarlos en conjunto implica 
 uno de los dos. Además, la saturación de cada uno tiene consecuencias distintas —consultas
 degradadas frente a notificaciones sin entregar— y el worker no necesita exposición a internet.
 
-**Microservicios separados, no.** Ambos operan sobre las mismas tablas y comparten la máquina
-de estados. Dos servicios contra una misma base de datos constituyen un monolito distribuido:
-asumen el costo de la red sin obtener aislamiento. El límite de un microservicio se traza por
-capacidad de negocio, y aquí el *bounded context* es uno solo.
+**Servicios autónomos, no.** Los tres operan sobre las mismas tablas y comparten la máquina de
+estados, que por eso vive en `common`. Duplicar esa lógica en cada módulo no produciría
+independencia sino divergencia: el acoplamiento reside en el esquema, no en el código.
 
-La separación tendría sentido si la entrega pasara a tener otro equipo responsable y otro SLA.
-En ese caso el corte correcto no sería API contra worker, sino que el servicio de entrega
-fuera dueño de los datos y la API self-service pasara a ser un modelo de lectura (CQRS).
+El límite de un microservicio se traza por capacidad de negocio, y aquí el *bounded context*
+es uno solo. La separación en componentes aísla ciclos de despliegue y dependencias, no datos.
+
+La independencia real exigiría que cada componente fuera dueño de sus datos: que la API dejara
+de leer las tablas que escribe el worker y pasara a ser un modelo de lectura alimentado por
+eventos, con el reenvío convertido en un comando publicado (CQRS). Es la evolución que
+corresponde cuando la entrega tenga otro equipo responsable y otro SLA.
+
+**Organización del código.** Los tres componentes conviven en un repositorio junto a una
+librería con el dominio, los casos de uso y los adaptadores compartidos. Es una decisión de
+organización y no de arquitectura: el diseño descrito aquí sería idéntico con tres repositorios
+y la librería publicada como artefacto versionado. El monorepo evita ese ciclo de publicación
+en cada cambio del dominio, a cambio de que un cambio en la librería recompile los tres
+componentes.
 
 ---
 
@@ -110,8 +134,9 @@ fuera dueño de los datos y la API self-service pasara a ser un modelo de lectur
 ```mermaid
 flowchart LR
     subgraph in["Adaptadores de entrada"]
+        msg1["KafkaPlatformEventListener"]
+        msg2["SqsDeliveryCommandListener"]
         rest["NotificationEventController"]
-        msg["KafkaPlatformEventListener<br/>SqsDeliveryCommandListener"]
     end
 
     subgraph app["Aplicación · puertos y casos de uso"]
@@ -128,9 +153,9 @@ flowchart LR
 
     subgraph out["Adaptadores de salida"]
         r2dbc["Persistencia"]
-        web["WebClient + HMAC + anti-SSRF"]
         mq["Cola de trabajo"]
         met["Micrometer"]
+        web["WebClient + HMAC + anti-SSRF"]
     end
 
     in --> pin
@@ -142,8 +167,8 @@ flowchart LR
 ```
 
 Las dependencias apuntan siempre hacia el interior. `domain` y `application` no importan
-ninguna clase de Spring; el cableado reside en `infrastructure/config/AppConfig`. La
-consecuencia verificable es que las pruebas del dominio y los casos de uso se ejecutan sin
+ninguna clase de Spring; el cableado reside en la clase de configuración de cada ejecutable.
+La consecuencia verificable es que las pruebas del dominio y los casos de uso se ejecutan sin
 contexto de Spring, sin base de datos y sin broker.
 
 **Regla que sostiene el aislamiento entre clientes:** `EventQuery` exige `clientId` en su
@@ -158,19 +183,22 @@ no se previene con una comprobación, sino impidiendo que el caso inseguro sea e
 ```mermaid
 sequenceDiagram
     participant K as Bus de eventos
-    participant W as Worker
+    participant CON as consumer
     participant DB as Base de datos
+    participant Q as Cola de entrega
+    participant W as worker
     participant S as Suscripciones
     participant H as Webhook cliente
-    participant Q as Cola de entrega
 
-    K->>W: evento de plataforma
-    W->>DB: INSERT ... ON CONFLICT DO NOTHING
-    Note over W,DB: event_id es PK:<br/>la reentrega no duplica
-    W->>Q: encolar entrega
-    W-->>K: confirma el offset
+    CON->>K: pide eventos (poll)
+    K-->>CON: evento de plataforma
+    CON->>DB: INSERT ... ON CONFLICT DO NOTHING
+    Note over CON,DB: event_id es PK:<br/>la reentrega no duplica
+    CON->>Q: encolar entrega
+    CON-->>K: confirma el offset
 
-    Q->>W: orden de entrega
+    W->>Q: pide mensajes (long polling)
+    Q-->>W: orden de entrega
     W->>DB: leer estado autoritativo
     alt ya está en estado terminal
         W-->>Q: confirma, sin acción
@@ -370,8 +398,9 @@ flowchart TB
             nat["NAT Gateway<br/>Elastic IPs fijas"]
         end
         subgraph priv["Subredes privadas"]
-            api["ECS Fargate · servicio API<br/>autoescala por RPS/CPU"]
-            worker["ECS Fargate · servicio worker<br/>autoescala por profundidad de cola"]
+            api["ECS Fargate · api<br/>autoescala por RPS/CPU"]
+            worker["ECS Fargate · worker<br/>autoescala por profundidad de cola"]
+            consumer["ECS Fargate · consumer<br/>autoescala por lag del consumer group"]
             aurora[("Aurora PostgreSQL<br/>escritor + réplica de lectura")]
             os[("OpenSearch Service")]
         end
@@ -389,7 +418,9 @@ flowchart TB
     dd["Datadog<br/>métricas · APM"]
 
     users --> r53 --> waf --> alb --> api
-    confluent -. "PrivateLink" .-> worker
+    confluent -- "eventos · PrivateLink" --> consumer
+    consumer --> aurora
+    consumer --> vpce
     api --> aurora
     worker --> aurora
     api --> vpce --> sqs
@@ -399,12 +430,22 @@ flowchart TB
     worker --> nat --> hooks
     api -.-> os
     worker -.-> os
+    consumer -.-> os
     api -.-> dd
     worker -.-> dd
+    consumer -.-> dd
 
     style api fill:#1f6feb,color:#fff
     style worker fill:#1f6feb,color:#fff
+    style consumer fill:#1f6feb,color:#fff
 ```
+
+Las líneas punteadas son telemetría: la aplicación escribe a stdout y publica en su endpoint
+de métricas, y son el recolector de logs y el agente de Datadog quienes las extraen. Ningún
+componente llama a OpenSearch ni a Datadog.
+
+Cada módulo se despliega como un servicio de ECS independiente, con su propia imagen, su
+propia política de autoescalado y su propio ciclo de despliegue.
 
 | Local (este repositorio) | AWS | Cambio en el código |
 |---|---|---|
@@ -436,11 +477,11 @@ rompería integraciones.
 
 | Dimensión | Mecanismo | Señal de autoescalado | En AWS |
 |---|---|---|---|
-| API self-service | Réplicas sin estado tras un balanceador | RPS por réplica / CPU | ECS Fargate + ALB |
-| Worker de entrega | Consumidores en competencia sobre la cola | Profundidad de la cola | `ApproximateNumberOfMessagesVisible` |
+| API self-service | Réplicas de `api` sin estado tras un balanceador | RPS por réplica / CPU | ECS Fargate + ALB |
+| Worker de entrega | Réplicas de `worker` en competencia sobre la cola | Profundidad de la cola | `ApproximateNumberOfMessagesVisible` |
 | Lecturas de la API | Réplica de lectura | Latencia de consulta | Aurora read replica |
 | Escrituras | Nodo escritor; particionar por `client_id` si procede | — | Aurora writer |
-| Ingesta desde el bus | Consumidores hasta el paralelismo del bus | Retraso del consumidor | Lag del consumer group |
+| Ingesta desde el bus | Réplicas de `consumer` hasta el paralelismo del bus | Retraso del consumidor | Lag del consumer group |
 
 El cuello de botella no reside en el servicio sino en el webhook del cliente. Por eso la
 métrica que gobierna el autoescalado del worker es la profundidad de cola y no la CPU: el

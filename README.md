@@ -1,4 +1,4 @@
-# notification-delivery-service
+# cobre-notification-delivery
 
 Servicio de entrega de notificaciones de eventos a webhooks de clientes, con reintentos,
 firma HMAC y bitácora de intentos. Expone una API self-service de consulta y reenvío.
@@ -19,31 +19,68 @@ POST /notification_events/{id}/replay  reenvío de una entrega fallida
 flowchart LR
     SVC["Servicios de la plataforma<br/>pagos · transferencias · saldos"]
     K[("Kafka<br/>cobre.platform.events")]
-    W["<b>Worker</b><br/>entrega y reintenta"]
-    API["<b>API</b><br/>self-service"]
     Q[("SQS<br/>cola de entrega")]
     DLQ[("SQS<br/>DLQ")]
     DB[("PostgreSQL<br/>eventos + bitácora")]
     CLI["Webhook del cliente"]
     USR["Cliente"]
 
+    subgraph svc["Entrega de notificaciones"]
+        CON["<b>consumer</b><br/>ingesta y encola"]
+        W["<b>worker</b><br/>entrega y reintenta"]
+        API["<b>api</b><br/>consulta y reenvío"]
+    end
+
     SVC -->|publica| K
-    K -->|consume| W
-    W <-->|encola · reintenta| Q
-    Q -.->|reintentos agotados| DLQ
+    K -->|consume| CON
+    CON -->|persiste| DB
+    CON -->|encola| Q
+    Q -->|toma la orden| W
+    W -->|consulta suscripción<br/>registra intento| DB
     W -->|POST firmado HMAC| CLI
-    W --- DB
-    API --- DB
+    W -->|reencola con retardo| Q
+    W -->|reintentos agotados| DLQ
+    Q -.->|mensaje no confirmado| DLQ
     USR -->|consulta · reenvía| API
-    API -.->|encola reenvío| Q
+    API -->|consulta| DB
+    API -->|encola reenvío| Q
+
+    style CON fill:#1f6feb,color:#fff
+    style W fill:#1f6feb,color:#fff
+    style API fill:#1f6feb,color:#fff
 ```
 
-### Worker y API son despliegues independientes
+La flecha indica la dirección del dato. La línea punteada marca el único flujo que ningún
+componente invoca: cuando un mensaje no se confirma tras varias entregas —por ejemplo, uno
+corrupto que nunca llega a procesarse— SQS lo mueve a la DLQ por su *redrive policy*.
 
-La carga del worker la determina el volumen de eventos de la plataforma; la de la API, el
-uso que hagan las personas. Son magnitudes distintas y evolucionan por separado, de modo que
-escalar una no debe obligar a provisionar réplicas de la otra. La misma imagen arranca en uno
-u otro rol según la variable `COBRE_ROLE`.
+Los reintentos agotados son distintos: ahí el worker envía el mensaje a la DLQ de forma
+explícita, con el motivo del descarte.
+
+### Tres componentes desplegables
+
+| Componente | Responsabilidad | Señal de escalado |
+|---|---|---|
+| **consumer** | Ingesta desde el bus y encola la entrega | Retraso del consumidor |
+| **worker** | Entrega al webhook y aplica los reintentos | Profundidad de la cola |
+| **api** | Consulta y reenvío manual | Peticiones por segundo |
+
+Se despliegan por separado porque sus cargas son de naturaleza distinta: el worker sigue el
+ritmo de la plataforma y la API el de las personas. Escalar una no debe obligar a provisionar
+réplicas de la otra. Además, la saturación de cada una tiene consecuencias diferentes —
+consultas degradadas frente a notificaciones sin entregar.
+
+Cada componente es un artefacto propio y carga solo las dependencias que usa. Verificable
+sobre los jars construidos:
+
+| Componente | Dependencia propia | Lo que no incluye |
+|---|---|---|
+| `consumer` | `reactor-kafka`, `kafka-clients` | Spring Security |
+| `worker` | cliente HTTP reactivo, firma HMAC | Kafka, Spring Security |
+| `api` | Spring Security, resource server JWT | Kafka |
+
+Qué adaptadores se activan lo determina el classpath de cada artefacto, no una condición
+evaluada al arrancar.
 
 ### Kafka como bus, SQS como cola de trabajo
 
@@ -63,14 +100,49 @@ direcciones de conexión.
 
 ## 2. Arquitectura hexagonal
 
+Cada componente tiene su propia capa de aplicación y sus adaptadores. Lo único compartido es
+el interior del hexágono.
+
 ```
-domain/          modelo puro, sin dependencias de framework
-application/     port/in · port/out · casos de uso
-infrastructure/  adaptadores: REST · Kafka · SQS · R2DBC · WebClient · Micrometer
+cobre-notificacion-kit-lib/           modelo · reglas · puertos · adaptadores compartidos
+cobre-notificacion-consumer-service/  ingesta desde el bus
+cobre-notificacion-worker-service/    entrega y reintentos
+cobre-notificacion-api-service/       consulta y reenvío
 ```
 
+Los sufijos dicen qué es cada uno: `-service` produce jar ejecutable, imagen y contenedor
+propios; `-lib` no arranca y viaja dentro de los tres.
+
+Cada módulo documenta lo suyo:
+
+| Módulo | Qué hace |
+|---|---|
+| [kit-lib](cobre-notificacion-kit-lib/README.md) | Modelo, reglas, puertos y los adaptadores que comparten |
+| [consumer-service](cobre-notificacion-consumer-service/README.md) | Consume el bus, persiste y encola |
+| [worker-service](cobre-notificacion-worker-service/README.md) | Entrega al webhook, reintenta y rinde a la DLQ |
+| [api-service](cobre-notificacion-api-service/README.md) | Consulta, reenvío y emisión de tokens |
+
+Los casos de uso viven donde se usan: ninguno lo comparten dos componentes. El modelo sí se
+comparte, porque los tres operan sobre las mismas tablas y la misma máquina de estados;
+duplicarlo no daría independencia sino divergencia.
+
+**`domain` no tiene Spring en el classpath**, así que la violación de la regla hexagonal no
+compila. Su única dependencia es Reactor, que es una librería de composición asíncrona y no un
+framework de infraestructura.
+
 Las dependencias apuntan siempre hacia el interior. Los paquetes `domain` y `application` no
-importan ninguna clase de Spring; el cableado reside en `infrastructure/config`.
+importan ninguna clase de Spring; el cableado reside en la clase de configuración de cada
+componente.
+
+**Organización del código.** Los cinco módulos viven en un mismo repositorio. Es una decisión
+de organización, no de arquitectura: el diseño sería idéntico con repositorios separados y las
+dos librerías publicadas como artefactos versionados. El repositorio único evita ese ciclo de
+publicación en cada cambio del dominio, a cambio de que un cambio en él recompile los tres
+componentes.
+
+Algo se traslada a `kit` cuando lo necesita un segundo componente, no antes: cada dependencia
+añadida allí la cargan los tres artefactos aunque dos no la utilicen. El criterio para
+distinguirlo de `domain` es directo: si sabe qué es una notificación, no es kit.
 
 La consecuencia verificable es que las pruebas del dominio y de los casos de uso se ejecutan
 sin contexto de Spring, sin base de datos y sin broker.
@@ -88,23 +160,30 @@ los adaptadores correspondientes: ni el dominio ni los casos de uso cambian.
 sequenceDiagram
     participant P as Plataforma
     participant K as Kafka
-    participant W as Worker
+    participant CON as consumer
     participant DB as PostgreSQL
     participant Q as SQS
+    participant W as worker
     participant C as Webhook del cliente
 
     P->>K: publica evento
-    K->>W: consume
-    W->>DB: guarda (idempotente por event_id)
-    W->>Q: encola la entrega
-    Note over W,K: confirma el offset
-    Q->>W: entrega el mensaje
+    CON->>K: pide eventos (poll)
+    K-->>CON: evento
+    CON->>DB: guarda (idempotente por event_id)
+    CON->>Q: encola la entrega
+    Note over CON,K: confirma el offset
+    W->>Q: pide mensajes (espera hasta 20s)
+    Q-->>W: orden de entrega
     W->>DB: verifica suscripción activa
     W->>C: POST + firma HMAC
     C-->>W: 200
     W->>DB: completed · registra el intento
     W->>Q: borra el mensaje (confirmación)
 ```
+
+Ni Kafka ni SQS empujan mensajes: el consumidor y el worker preguntan, y la llamada se queda
+esperando hasta que haya algo o venza el tiempo. Por eso las flechas de petición salen de los
+componentes, no de los brokers.
 
 El offset de Kafka se confirma después de persistir el evento, y el mensaje de SQS se elimina
 después de completar la entrega. Si el proceso termina de forma abrupta en un punto
@@ -121,16 +200,18 @@ incluye la cabecera `X-Cobre-Event-Id` para que el receptor descarte repeticione
 ```mermaid
 sequenceDiagram
     participant Q as SQS
-    participant W as Worker
+    participant W as worker
     participant C as Webhook del cliente
 
-    Q->>W: intento 1
+    W->>Q: pide mensajes
+    Q-->>W: orden de entrega
     W->>C: POST
     C-->>W: 503
     W->>Q: reencola con DelaySeconds ≈ 3s
-    Note over W: retrying · intento registrado
+    Note over W,Q: retrying · el mensaje queda oculto 3 s
 
-    Q->>W: intento 2 (3,2 s después)
+    W->>Q: pide mensajes
+    Q-->>W: la misma orden, ya visible
     W->>C: POST
     C-->>W: 200
     W->>Q: borra el mensaje
@@ -149,14 +230,16 @@ instante, generando un pico de carga sobre un sistema que acaba de restablecerse
 ```mermaid
 sequenceDiagram
     participant Q as SQS
-    participant W as Worker
+    participant W as worker
     participant C as Webhook del cliente
     participant D as DLQ
 
     loop hasta agotar los intentos
-        Q->>W: intento n
+        W->>Q: pide mensajes
+        Q-->>W: orden de entrega
         W->>C: POST
         C-->>W: 503
+        W->>Q: reencola con retardo
     end
     W->>D: deriva el mensaje a la DLQ
     Note over W: failed · habilitado para reenvío manual
@@ -173,10 +256,10 @@ reintentan, dado que la repetición produciría el mismo resultado.
 ```mermaid
 sequenceDiagram
     participant U as Cliente
-    participant API
+    participant API as api
     participant DB as PostgreSQL
     participant Q as SQS
-    participant W as Worker
+    participant W as worker
 
     U->>API: POST /oauth/token
     API-->>U: access_token
@@ -185,7 +268,8 @@ sequenceDiagram
     API->>DB: reinicia el ciclo · replay_count + 1
     API->>Q: encola
     API-->>U: 202 Accepted
-    Q->>W: el worker entrega con el flujo habitual
+    W->>Q: pide mensajes
+    Q-->>W: la orden del reenvío, sin camino aparte
 ```
 
 La respuesta es 202 y no 200: la solicitud queda encolada, no entregada. La bitácora es de
@@ -244,8 +328,8 @@ afectado para notificar a su equipo).
 
 ### Pruebas
 
-196 pruebas, sin fallos. Cobertura del 94,5 % de instrucciones y 94,6 % de líneas. El build
-falla si la cobertura desciende del 90 %.
+192 pruebas, sin fallos. Cobertura agregada de los cinco módulos: 94,3 % de instrucciones
+y 94,6 % de líneas. El build falla si desciende del 90 %.
 
 ---
 
@@ -253,8 +337,33 @@ falla si la cobertura desciende del 90 %.
 
 Requisitos: Docker y Java 21. No es necesario instalar Gradle.
 
+Puertos: la API en 8080, el worker en 8081 y el consumidor en 8083.
+
+### Todo en contenedores
+
 ```bash
-# 1. Secreto de firma de tokens. La aplicación no arranca sin él.
+cp .env.example .env
+openssl rand -base64 48          # asignar el resultado a JWT_SECRET
+set -a; source .env; set +a
+
+python3 scripts/webhook-receiver.py &   # hace de cliente, corre en la máquina
+
+docker compose --profile apps up -d --build
+```
+
+Levanta seis contenedores: PostgreSQL, Redpanda, ElasticMQ y los tres servicios. Cada
+servicio construye su propia imagen desde su `Dockerfile`, igual que se desplegaría en ECS.
+
+### Desde el IDE
+
+Sin el perfil `apps`, el compose levanta solo la infraestructura y los servicios se arrancan
+a mano:
+
+```bash
+# 0. Construir los tres jars
+./gradlew bootJar
+
+# 1. Secreto de firma de tokens. Ningún módulo arranca sin él.
 cp .env.example .env
 openssl rand -base64 48          # asignar el resultado a JWT_SECRET
 set -a; source .env; set +a
@@ -265,8 +374,10 @@ docker compose up -d
 # 3. Receptor de webhooks de prueba: simula el sistema del cliente y verifica la firma
 python3 scripts/webhook-receiver.py
 
-# 4. Aplicación
-SPRING_PROFILES_ACTIVE=local ./gradlew bootRun
+# 4. Los tres ejecutables, en terminales separadas
+SPRING_PROFILES_ACTIVE=local java -jar cobre-notificacion-api-service/build/libs/cobre-notificacion-api-service-0.0.1-SNAPSHOT.jar
+SPRING_PROFILES_ACTIVE=local java -jar cobre-notificacion-worker-service/build/libs/cobre-notificacion-worker-service-0.0.1-SNAPSHOT.jar
+SPRING_PROFILES_ACTIVE=local java -jar cobre-notificacion-consumer-service/build/libs/cobre-notificacion-consumer-service-0.0.1-SNAPSHOT.jar
 
 # 5. Publicación de un evento
 ./scripts/publish-event.sh EVT-DEMO-1 CLIENT001 credit_transfer "Transferencia por 1.500.000"

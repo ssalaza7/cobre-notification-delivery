@@ -1,0 +1,103 @@
+# cobre-notificacion-worker-service
+
+Entrega las notificaciones al webhook del cliente y aplica la política de reintentos.
+
+Es donde vive la lógica de entrega: resolver el destino, firmar, clasificar el fallo, decidir
+si se reintenta y cerrar el estado.
+
+```
+SQS  ──►  worker  ──►  webhook del cliente   (POST firmado con HMAC)
+                  ──►  PostgreSQL            (estado + bitácora de intentos)
+                  ──►  SQS                   (reintento con retardo, o DLQ)
+```
+
+## Qué consume y qué produce
+
+| | |
+|---|---|
+| Entrada | Cola de entrega en SQS |
+| Salida | POST al webhook · fila en `delivery_attempt` · estado en `notification_event` |
+| Puerto HTTP | 8081, solo `/actuator` |
+
+No expone API de negocio. El servidor existe para las sondas y las métricas.
+
+## Cómo lee de la cola
+
+SQS no empuja: el worker pide hasta 10 mensajes y la llamada espera hasta 20 segundos si no
+hay nada. Es *long polling* — evita miles de llamadas vacías sin perder inmediatez.
+
+El mensaje se borra **después** de procesar. Borrar es confirmar: si el proceso muere a mitad,
+el mensaje reaparece al vencer el *visibility timeout* y la notificación no se pierde.
+
+El mensaje solo transporta el identificador. El estado se relee de la base en cada intento,
+porque entre el encolado y la entrega pueden pasar minutos y el estado pudo cambiar.
+
+## Reintentos
+
+Escalones: **5s · 30s · 2m · 10m · 15m**. El último coincide con el máximo que admite
+`DelaySeconds` en SQS.
+
+Cada espera lleva un componente aleatorio de hasta el 20 %. Sin él, todas las notificaciones
+acumuladas durante la caída de un destino reintentarían en el mismo instante y volverían a
+tumbarlo.
+
+| Respuesta del destino | Qué hace |
+|---|---|
+| 2xx | `completed` |
+| 5xx, 408, 429, timeout, error de conexión | Reintenta con el siguiente escalón |
+| 4xx (salvo 408 y 429) | `failed` sin reintentar: el contrato está roto |
+| 3xx | `failed`. No se siguen redirecciones: un 302 podría reapuntar a la red interna |
+
+Agotados los intentos, el worker envía el mensaje a la DLQ con el motivo y el evento queda
+`failed`, disponible para reenvío desde la api.
+
+## Seguridad de la entrega
+
+Cada POST va firmado con HMAC-SHA256 en `X-Cobre-Signature: t=<epoch>,v1=<hex>`. El instante
+forma parte del contenido firmado, de modo que el receptor puede rechazar la reproducción de
+una captura antigua.
+
+Antes de llamar, la URL se valida: fuera del perfil `local` se exige HTTPS y se rechazan las
+direcciones que resuelvan a la red interna. Sin eso el servicio sería un proxy hacia la VPC.
+
+## Configuración
+
+```yaml
+cobre:
+  sqs:
+    delivery-queue-url: ${SQS_DELIVERY_QUEUE:...}
+    dead-letter-queue-url: ${SQS_DLQ:...}
+    max-messages: 10
+    wait-time: 20s
+  webhook:
+    require-https: true
+    block-internal-addresses: true
+    connect-timeout: 2s
+    response-timeout: 5s
+    override-url: ${WEBHOOK_OVERRIDE_URL:}
+  retry:
+    max-attempts: 5
+    delays: 5s, 30s, 2m, 10m, 15m
+    jitter-ratio: 0.2
+```
+
+`WEBHOOK_OVERRIDE_URL` sustituye el destino de todas las suscripciones sin tocar la base.
+
+## Ejecución
+
+```bash
+./gradlew :cobre-notificacion-worker-service:bootJar
+
+SPRING_PROFILES_ACTIVE=local java -jar \
+  cobre-notificacion-worker-service/build/libs/cobre-notificacion-worker-service-0.0.1-SNAPSHOT.jar
+```
+
+## Por qué es reactivo
+
+Es el módulo que lo justifica: cada entrega espera la respuesta de un tercero que puede tardar
+segundos o no contestar. Con un hilo por entrega, mil destinos lentos serían mil hilos
+bloqueados.
+
+## Dependencia propia
+
+El cliente HTTP reactivo. No incluye Kafka ni Spring Security.
