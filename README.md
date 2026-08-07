@@ -355,7 +355,22 @@ destinos HTTP. En cualquier otro perfil se exige HTTPS y se bloquean las direcci
 
 ---
 
-## 7. Limitaciones conocidas
+## 7. Trade-offs
+
+| Decisión | Alternativa | Por qué esta | Cuándo se revisaría |
+|---|---|---|---|
+| **Kafka como bus, SQS como cola de trabajo** | Solo Kafka | Kafka no tiene retardo por mensaje, y su orden por partición deja que un webhook lento bloquee a los demás clientes | Si el retardo y el reparto sin orden llegaran al bus |
+| **Los tres comparten base de datos** | Cada uno dueño de sus datos, con CQRS | Comparten la máquina de estados; duplicarla daría divergencia, no independencia | Cuando la entrega y la consulta tengan equipos y SLA distintos |
+| **PostgreSQL** | Almacén clave-valor | Las consultas son relacionales: filtro por rango, estado y total paginado | Cuando la bitácora de intentos sature el nodo escritor |
+| **Los tres son reactivos** | La api bloqueante con hilos virtuales | Evita duplicar la capa de persistencia; el worker sí lo necesita, porque espera a terceros lentos | Si la api creciera hasta justificar su propio modelo de datos |
+| **Entrega al menos una vez** | Confirmar antes de procesar | Un duplicado que el cliente descarta cuesta menos que un pago no notificado | No aplica: el estándar en notificaciones de pago |
+| **Anti-SSRF por lista negra** | Allowlist de dominios verificados por cliente | Suficiente para la prueba; la allowlist exige verificación de dominio y fijar la IP resuelta | Antes de exponerlo a clientes reales |
+| **Límite de tasa en la aplicación** | WAF en el borde | Sin infraestructura adicional | En AWS, donde el control pertenece al WAF |
+| **Un repositorio con los cinco módulos** | Repositorios separados con las librerías publicadas | Evita el ciclo de publicación en cada cambio del dominio | Si los componentes tuvieran equipos distintos |
+
+---
+
+## 8. Limitaciones conocidas
 
 1. **No hay circuit breaker por cliente.**
 2. **El límite de tasa es por instancia**, no global.
