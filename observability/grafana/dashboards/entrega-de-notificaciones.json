@@ -30,7 +30,7 @@
       },
       "targets": [
         {
-          "expr": "round(sum(increase(cobre_notification_settled_total{status=\"completed\"}[$__range])))) or vector(0)",
+          "expr": "round(sum(increase(cobre_notification_settled_total{status=\"completed\"}[$__range]))) or vector(0)",
           "legendFormat": "entregadas"
         }
       ]
@@ -56,7 +56,7 @@
       },
       "targets": [
         {
-          "expr": "round(sum(increase(cobre_notification_settled_total{status=\"failed\"}[$__range])))) or vector(0)",
+          "expr": "round(sum(increase(cobre_notification_settled_total{status=\"failed\"}[$__range]))) or vector(0)",
           "legendFormat": "fallidas"
         }
       ]
@@ -82,7 +82,7 @@
       },
       "targets": [
         {
-          "expr": "round(sum(increase(cobre_notification_settled_total{status=\"completed\", after_retries=\"true\"}[$__range])))) or vector(0)",
+          "expr": "round(sum(increase(cobre_notification_settled_total{status=\"completed\", after_retries=\"true\"}[$__range]))) or vector(0)",
           "legendFormat": "recuperadas"
         }
       ]
@@ -108,7 +108,7 @@
       },
       "targets": [
         {
-          "expr": "round(sum(increase(cobre_notification_settled_total{status=\"failed\", after_retries=\"true\"}[$__range])))) or vector(0)",
+          "expr": "round(sum(increase(cobre_notification_settled_total{status=\"failed\", after_retries=\"true\"}[$__range]))) or vector(0)",
           "legendFormat": "agotadas"
         }
       ]
@@ -134,7 +134,7 @@
       },
       "targets": [
         {
-          "expr": "round(sum(increase(cobre_notification_replay_requested_total[$__range])))) or vector(0)",
+          "expr": "round(sum(increase(cobre_notification_replay_requested_total[$__range]))) or vector(0)",
           "legendFormat": "reenvios"
         }
       ]
