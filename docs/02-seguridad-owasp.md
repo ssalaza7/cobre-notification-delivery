@@ -8,7 +8,7 @@ las dos últimas son propias de un servicio de webhooks.
 |---|---|---|---|
 | A01 | Broken Access Control (BOLA) | Los `event_id` son secuenciales y adivinables | Implementado |
 | A07 | Identification & Authentication Failures | API pública sin sesión | Implementado |
-| A03 | Injection | Los filtros construyen SQL dinámico | Implementado |
+| A03 | Injection | Los filtros y el cursor se arman dinámicamente | Implementado |
 | A10 | SSRF | El cliente elige la URL de destino | Implementado |
 | A04 | Insecure Design (consumo sin límite) | Un cliente puede degradar el servicio para todos | Parcial |
 
@@ -31,10 +31,15 @@ el objeto.
    ```
 2. **El modelo la hace imposible.** `EventQuery` exige `clientId` en su constructor. La
    autorización no depende de recordar una comprobación.
-3. **El filtro va en la consulta**, no en memoria:
-   ```sql
-   SELECT ... FROM notification_event WHERE event_id = :eventId AND client_id = :clientId
+3. **El filtro vive en el puerto**, no en quien lo llama. La lectura por clave de DynamoDB no
+   admite condiciones sobre atributos que no son clave, así que la comprobación de propiedad
+   la hace el adaptador sobre el agregado ya leído:
+   ```java
+   return findById(eventId).filter(event -> event.belongsTo(clientId));
    ```
+   La garantía no es que la aplique el motor, sino que el caso de uso no tiene forma de
+   obtener un evento sin ella: el puerto solo expone `findByIdAndClientId`, y `belongsTo` es
+   una regla del dominio con prueba propia.
 4. **Un recurso ajeno responde 404, no 403.** Un 403 confirmaría la existencia del recurso y
    convertiría la API en un oráculo de enumeración.
 5. **Scopes separados** para consulta, reenvío y administración de suscripciones. Quien solo
@@ -43,7 +48,7 @@ el objeto.
 Verificado: `EVT005` (de `CLIENT003`) con token de `CLIENT002` devuelve 404; `EVT003` devuelve
 200.
 
-📁 `api`: `NotificationEventController`, `AuthenticatedClient`, `SecurityConfig` · `common`: `EventQuery`
+📁 `api`: `NotificationEventController`, `AuthenticatedClient`, `SecurityConfig` · `kit`: `EventQuery`, `NotificationEvent.belongsTo`
 
 ---
 
@@ -88,27 +93,34 @@ en el despliegue propuesto— y la validación pasaría a **JWKS**: el servicio 
 claves públicas del emisor, que podría rotarlas sin redesplegar, y dejaría de conocer ningún
 secreto de firma. Es un cambio de configuración, no de código.
 
-📁 `api`: `SecurityConfig`, `AuthenticatedClient` · `common`: `IssueAccessTokenService`
+📁 `api`: `SecurityConfig`, `AuthenticatedClient` · `kit`: `IssueAccessTokenService`
 
 ---
 
 ## A03 · Injection
 
-El listado construye su `WHERE` según los filtros recibidos, que es donde suele aparecer la
-concatenación de cadenas.
+El listado arma su consulta según los filtros recibidos, que es donde suele aparecer la
+concatenación de cadenas. DynamoDB no interpreta SQL, pero sus expresiones se construyen igual
+y admiten el mismo error.
 
-**Todo valor variable viaja como parámetro enlazado.** Solo se concatenan fragmentos literales
-escritos en el código:
+**Ningún valor entra en la expresión.** Los nombres de atributo y los valores viajan por sus
+mapas, y lo único que se concatena son fragmentos literales escritos en el código:
 
 ```java
 if (query.deliveryStatus() != null) {
-    where.append(" AND delivery_status = :deliveryStatus");   // literal
-    params.put("deliveryStatus", TypedValue.of(...));          // valor enlazado
+    names.put("#status", NotificationTable.DELIVERY_STATUS);          // literal
+    values.put(":status", NotificationTable.s(...));                  // valor enlazado
+    request.filterExpression("#status = :status");
 }
 ```
 
 El enum se valida antes de llegar a la consulta —un `delivery_status` desconocido se rechaza
-con 400— y el tamaño de página está acotado entre 1 y 100. El cursor viaja opaco y se comprueba que pertenezca al cliente que consulta: pasar el de otro tenant se rechaza.
+con 400— y el tamaño de página está acotado entre 1 y 100.
+
+**El cursor es entrada del usuario.** Viaja opaco en Base64, y al decodificarlo se comprueba
+que su partición sea la del cliente autenticado: pasar el cursor de otro tenant se rechaza con
+400, igual que uno corrupto. Sin esa comprobación sería una vía para leer notificaciones
+ajenas, que es lo que el resto del diseño impide.
 
 📁 `kit`: `DynamoDbNotificationEventRepositoryAdapter.buildQuery`, `EventCursor`, `EventQuery`
 

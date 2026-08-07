@@ -40,13 +40,15 @@ flowchart LR
     CON -->|persiste| DB
     CON -->|encola| Q
     Q -->|toma la orden| W
-    W -->|consulta suscripción<br/>registra intento| DB
+    W -->|registra intento<br/>y estado| DB
+    W -->|consulta suscripción| PG
     W -->|POST firmado HMAC| CLI
     W -->|reencola con retardo| Q
     W -->|reintentos agotados| DLQ
     Q -.->|mensaje no confirmado| DLQ
     USR -->|consulta · reenvía| API
     API -->|consulta| DB
+    API -->|suscripciones · credenciales| PG
     API -->|encola reenvío| Q
 
     style CON fill:#1f6feb,color:#fff
@@ -111,6 +113,7 @@ sequenceDiagram
     participant K as Kafka
     participant CON as consumer
     participant DB as DynamoDB
+    participant PG as PostgreSQL
     participant Q as SQS
     participant W as worker
     participant C as Webhook del cliente
@@ -123,7 +126,7 @@ sequenceDiagram
     Note over CON,K: confirma el offset
     W->>Q: pide mensajes (espera hasta 20s)
     Q-->>W: orden de entrega
-    W->>DB: verifica suscripción activa
+    W->>PG: verifica suscripción activa
     W->>C: POST + firma HMAC
     C-->>W: 200
     W->>DB: completed · registra el intento
@@ -192,11 +195,13 @@ Las respuestas 4xx no llegan aquí: se clasifican como fallo permanente y no se 
 sequenceDiagram
     participant U as Cliente
     participant API as api
+    participant PG as PostgreSQL
     participant DB as DynamoDB
     participant Q as SQS
     participant W as worker
 
     U->>API: POST /oauth/token
+    API->>PG: valida la credencial (bcrypt)
     API-->>U: access_token
     U->>API: POST /notification_events/{id}/replay
     API->>DB: valida propiedad y estado failed

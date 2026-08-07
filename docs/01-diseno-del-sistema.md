@@ -91,7 +91,9 @@ flowchart TB
     worker -- "reintentos agotados" --> dlq
     dq -. "mensaje no confirmado" .-> dlq
     worker --> db
+    worker -- "suscripción: destino y secreto" --> pg
     api --> db
+    api -- "suscripciones · credenciales" --> pg
     api -- "replay" --> dq
     service -.-> obs
 
@@ -163,7 +165,8 @@ flowchart LR
     end
 
     subgraph out["Adaptadores de salida"]
-        r2dbc["Persistencia"]
+        ddb["Persistencia DynamoDB<br/>notificaciones · intentos"]
+        sql["Persistencia R2DBC<br/>suscripciones · credenciales"]
         mq["Cola de trabajo"]
         met["Micrometer"]
         web["WebClient + HMAC + anti-SSRF"]
@@ -197,16 +200,16 @@ no se previene con una comprobación, sino impidiendo que el caso inseguro sea e
 sequenceDiagram
     participant K as Bus de eventos
     participant CON as consumer
-    participant DB as Base de datos
+    participant DB as DynamoDB
     participant Q as Cola de entrega
     participant W as worker
-    participant S as Suscripciones
+    participant S as PostgreSQL · suscripciones
     participant H as Webhook cliente
 
     CON->>K: pide eventos (poll)
     K-->>CON: evento de plataforma
-    CON->>DB: INSERT ... ON CONFLICT DO NOTHING
-    Note over CON,DB: event_id es PK:<br/>la reentrega no duplica
+    CON->>DB: PutItem si la clave no existe
+    Note over CON,DB: event_id es la partición:<br/>la reentrega no duplica
     CON->>Q: encolar entrega
     CON-->>K: confirma el offset
 
@@ -264,18 +267,18 @@ de modo que una espera con jitter nunca alcanza el escalón siguiente.
 sequenceDiagram
     participant C as Cliente
     participant A as API
-    participant DB as Base de datos
+    participant DB as DynamoDB
     participant Q as Cola de entrega
 
     C->>A: POST /notification_events/{id}/replay
-    A->>DB: SELECT ... WHERE event_id=? AND client_id=?
+    A->>DB: GetItem EVENT#{id} · se comprueba el client_id
     Note over A,DB: acotado al tenant del token
     alt no existe o es de otro cliente
         A-->>C: 404
     else no está en fallo definitivo
         A-->>C: 409
     else
-        A->>DB: UPDATE ... WHERE attempts=? AND replay_count=?
+        A->>DB: UpdateItem condicionado a (attempts, replay_count)
         Note over A,DB: bloqueo optimista:<br/>dos reenvíos simultáneos,<br/>solo uno encola
         A->>Q: encolar
         A-->>C: 202 Accepted
@@ -356,6 +359,11 @@ erDiagram
 solo `delivery_date`. Como la API debe filtrar por fecha de creación del evento, se modela
 `created_at` como el instante de generación y se siembra dos segundos antes de la entrega.
 
+La carga inicial la escribe `DynamoDbDemoSeeder`, solo en los perfiles `local` y `demo`. Se
+apoya en la misma escritura condicional que la ingesta, de modo que un segundo arranque no
+duplica nada ni descuadra el conteo por estado. Las suscripciones y las credenciales se siguen
+sembrando por migración de Flyway, porque siguen en PostgreSQL.
+
 ---
 
 ## 8. Propiedades exigidas a la infraestructura
@@ -398,7 +406,7 @@ El razonamiento se mantiene si el bus resulta ser RabbitMQ, Pub/Sub o SNS: cambi
 de entrada, no la estructura.
 
 **Estado en este repositorio:** las siete propiedades están implementadas sobre Kafka, SQS y
-PostgreSQL, y verificadas en ejecución. En local se apunta a Redpanda y ElasticMQ, que
+PostgreSQL, y verificadas en ejecución. En local se apunta a Redpanda, ElasticMQ y DynamoDB Local, que
 implementan los mismos protocolos.
 
 ---
@@ -426,13 +434,14 @@ flowchart TB
             api["ECS Fargate · api<br/>autoescala por RPS/CPU"]
             worker["ECS Fargate · worker<br/>autoescala por profundidad de cola"]
             consumer["ECS Fargate · consumer<br/>autoescala por lag del consumer group"]
-            aurora[("Aurora PostgreSQL<br/>escritor + réplica de lectura")]
+            aurora[("Aurora PostgreSQL<br/>suscripciones + credenciales")]
             os[("OpenSearch Service")]
         end
-        vpce["VPC Endpoints<br/>SQS · Secrets Manager · ECR · S3"]
+        vpce["VPC Endpoints<br/>SQS · DynamoDB · Secrets Manager · ECR · S3"]
     end
 
     subgraph aws["Servicios gestionados"]
+        ddb[("DynamoDB<br/>notificaciones + intentos")]
         sqs["SQS entrega + DLQ"]
         sm["Secrets Manager + KMS"]
         ecr["ECR"]
@@ -444,12 +453,12 @@ flowchart TB
 
     users --> r53 --> waf --> alb --> api
     confluent -- "eventos · PrivateLink" --> consumer
-    consumer --> aurora
     consumer --> vpce
     api --> aurora
     worker --> aurora
     api --> vpce --> sqs
     worker --> vpce
+    vpce --> ddb
     vpce --> sm
     vpce --> ecr
     worker --> nat --> hooks
@@ -563,7 +572,8 @@ exactly-once de extremo a extremo sería inexacto.
 1. **CI:** `./gradlew build` en cada PR, con pruebas y umbral de cobertura del 90 %.
 2. **CD:** imagen a ECR y despliegue azul/verde en ECS con sonda sobre
    `/actuator/health/readiness`.
-3. **Migraciones:** Flyway al arrancar. Para cero downtime, cambios de esquema compatibles hacia
+3. **Migraciones:** Flyway al arrancar, solo para las tablas relacionales; la tabla de DynamoDB
+   la declara la infraestructura. Para cero downtime, cambios de esquema compatibles hacia
    atrás en dos despliegues (expandir, migrar, contraer).
 4. **Apagado ordenado:** dejar de tomar mensajes, terminar los que están en vuelo y cerrar. Sin
    esto, cada despliegue genera reentregas evitables.
