@@ -338,58 +338,65 @@ y 94,6 % de líneas. El build falla si desciende del 90 %.
 
 ## 5. Ejecución
 
-Requisitos: Docker y Java 21. No es necesario instalar Gradle.
-
-Puertos: la API en 8080, el worker en 8081 y el consumidor en 8083.
-
-El destino de las notificaciones se registra por la API. Para verlas llegar en vivo, la vía
-más simple es [webhook.site](https://webhook.site): abrir la página, copiar la URL que asigna y
-registrarla con `POST /subscriptions`.
-
-### Todo en contenedores
+Requisitos: Docker. Nada más — ni Java ni Gradle instalados.
 
 ```bash
-cp .env.example .env
-openssl rand -base64 48          # asignar el resultado a JWT_SECRET
-set -a; source .env; set +a
-
-docker compose --profile apps up -d --build
-```
-
-Levanta seis contenedores: PostgreSQL, Redpanda, ElasticMQ y los tres servicios. Cada
-servicio construye su propia imagen desde su `Dockerfile`, igual que se desplegaría en ECS.
-
-### Desde el IDE
-
-Sin el perfil `apps`, el compose levanta solo la infraestructura y los servicios se arrancan
-a mano:
-
-```bash
-# 0. Construir los tres jars
-./gradlew bootJar
-
 # 1. Secreto de firma de tokens. Ningún módulo arranca sin él.
 cp .env.example .env
 openssl rand -base64 48          # asignar el resultado a JWT_SECRET
 set -a; source .env; set +a
 
-# 2. PostgreSQL, Kafka (Redpanda) y SQS (ElasticMQ)
-docker compose up -d
-
-# 4. Los tres ejecutables, en terminales separadas
-SPRING_PROFILES_ACTIVE=local java -jar cobre-notificacion-api-service/build/libs/cobre-notificacion-api-service-0.0.1-SNAPSHOT.jar
-SPRING_PROFILES_ACTIVE=local java -jar cobre-notificacion-worker-service/build/libs/cobre-notificacion-worker-service-0.0.1-SNAPSHOT.jar
-SPRING_PROFILES_ACTIVE=local java -jar cobre-notificacion-consumer-service/build/libs/cobre-notificacion-consumer-service-0.0.1-SNAPSHOT.jar
-
-# 5. Publicación de un evento
-./scripts/publish-event.sh EVT-DEMO-1 CLIENT001 credit_transfer "Transferencia por 1.500.000"
+# 2. Todo el entorno: infraestructura, observabilidad y los tres servicios
+docker compose --profile apps --profile observability up -d --build
 ```
 
-El perfil `local` reduce los escalones de reintento y admite destinos HTTP en `localhost`.
-En cualquier otro perfil se exige HTTPS y se bloquean las direcciones internas.
+La primera vez tarda unos minutos construyendo las tres imágenes. Después, segundos.
 
-Las consolas de observabilidad se levantan con
-`docker compose --profile observability up -d`.
+```bash
+docker compose --profile apps --profile observability ps      # qué está arriba
+```
+
+### Probar
+
+Importar [la colección de Postman](postman/) y ejecutarla de arriba abajo. Crea su propio
+destino en webhook.site, registra el webhook, publica eventos y consulta el resultado. No hay
+que preparar nada.
+
+```bash
+npx newman run postman/cobre-notification-delivery.postman_collection.json
+```
+
+### Ver qué pasa
+
+| Dónde | URL | Qué se ve |
+|---|---|---|
+| **Grafana** | http://localhost:3000 | Entregas, reintentos, latencia, clientes fallando |
+| **Kibana** | http://localhost:5601 | La traza de cada notificación. Vistas: `./scripts/kibana-import.sh` |
+| **Prometheus** | http://localhost:9091 | Las métricas en crudo |
+| **SQS** | http://localhost:9324 | La cola de entrega y la DLQ |
+
+Los logs, directo de cada servicio:
+
+```bash
+docker compose logs -f worker      # entregas y reintentos
+docker compose logs -f consumer    # ingesta desde el bus
+docker compose logs -f api         # peticiones a la API
+```
+
+### Apagar
+
+```bash
+docker compose --profile apps --profile observability down
+```
+
+Añadiendo `-v` borra también los datos de PostgreSQL.
+
+### Puertos
+
+API 8080 · worker 8081 · consumer 8083 · Grafana 3000 · Kibana 5601 · Prometheus 9091
+
+El perfil `local` acorta los escalones de reintento para poder verlos completos y admite
+destinos HTTP. En cualquier otro perfil se exige HTTPS y se bloquean las direcciones internas.
 
 ---
 
