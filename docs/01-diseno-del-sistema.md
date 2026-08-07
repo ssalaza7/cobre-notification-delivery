@@ -28,7 +28,7 @@ entregar, reintentar, registrar) y **self-service** (consultar, ver detalle, ree
 flowchart TB
     subgraph cobre["Plataforma Cobre"]
         platform["Microservicios de la plataforma<br/>cuentas · pagos · transacciones"]
-        svc["<b>Notification Delivery Service</b><br/>entrega de webhooks + API self-service"]
+        svc["<b>Entrega de notificaciones</b><br/>webhooks + API self-service"]
     end
 
     client_sys["Sistema del cliente<br/>(endpoint webhook HTTPS)"]
@@ -56,7 +56,7 @@ flowchart TB
     platform["Microservicios<br/>de la plataforma"]
     bus[("Bus de eventos<br/>de la plataforma")]
 
-    subgraph service["Notification Delivery Service"]
+    subgraph service["Entrega de notificaciones"]
         consumer["<b>consumer</b><br/>consume el bus y encola"]
         worker["<b>worker</b><br/>entrega y reintenta"]
         api["<b>api</b><br/>GET · GET/id · POST replay"]

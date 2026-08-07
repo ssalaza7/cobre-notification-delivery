@@ -1,4 +1,4 @@
-rootProject.name = "notification-delivery-service"
+rootProject.name = "cobre-notification-delivery"
 
 // Tres servicios desplegables y una libreria que comparten.
 //

@@ -1,4 +1,4 @@
-# notification-delivery-service
+# cobre-notification-delivery
 
 Servicio de entrega de notificaciones de eventos a webhooks de clientes, con reintentos,
 firma HMAC y bitácora de intentos. Expone una API self-service de consulta y reenvío.
@@ -25,7 +25,7 @@ flowchart LR
     CLI["Webhook del cliente"]
     USR["Cliente"]
 
-    subgraph svc["Notification Delivery Service"]
+    subgraph svc["Entrega de notificaciones"]
         CON["<b>consumer</b><br/>ingesta y encola"]
         W["<b>worker</b><br/>entrega y reintenta"]
         API["<b>api</b><br/>consulta y reenvío"]
