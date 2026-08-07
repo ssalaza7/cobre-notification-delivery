@@ -37,24 +37,23 @@ flowchart LR
         DB[("DynamoDB<br/>notificaciones + intentos")]
     end
 
-    SVC --> K
-    K --> CON
-    USR --> API
-    API -- "token" --> IDP
+    SVC -- "publica" --> K
+    CON -- "sondea" --> K
+    USR -- "consulta y reenvia" --> API
+    API -- "pide el token" --> IDP
     W -- "POST firmado HMAC" --> HOOK
 
-    CON --> Q
-    Q --> W
-    W -- "reintento con retardo" --> Q
-    API -- "reenvío" --> Q
+    CON -- "encola" --> Q
+    W -- "sondea y reencola reintentos" --> Q
+    API -- "encola el reenvio" --> Q
     W -- "reintentos agotados" --> DLQ
-    Q -. "mensaje no confirmado" .-> DLQ
+    Q -. "redrive automatico" .-> DLQ
 
-    CON --> DB
-    W --> DB
-    API --> DB
+    CON -- "persiste" --> DB
+    W -- "estado e intento" --> DB
+    API -- "consulta" --> DB
     W -- "resuelve destino" --> SUB
-    API --> SUB
+    API -- "administra" --> SUB
 
     style CON fill:#1f6feb,color:#fff,stroke:none
     style W fill:#1f6feb,color:#fff,stroke:none
