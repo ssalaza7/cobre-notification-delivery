@@ -19,50 +19,47 @@ GET  /subscriptions                    las suscripciones del cliente
 ## 1. Arquitectura
 
 ```mermaid
-flowchart LR
+flowchart TB
     SVC["Servicios de la plataforma<br/>pagos · transferencias · saldos"]
     K[("Kafka<br/>cobre.platform.events")]
+    CON["<b>consumer</b><br/>ingesta y encola"]
+    Q[("SQS<br/>cola de entrega")]
+    W["<b>worker</b><br/>entrega y reintenta"]
+    DLQ[("SQS<br/>DLQ")]
+
     USR["Cliente"]
+    API["<b>api</b><br/>consulta y reenvío"]
     IDP["Proveedor de identidad<br/>OIDC"]
     HOOK["Webhook del cliente"]
 
-    subgraph sistema["Entrega de notificaciones"]
-        direction TB
-        CON["<b>consumer</b><br/>ingesta y encola"]
-        W["<b>worker</b><br/>entrega y reintenta"]
-        API["<b>api</b><br/>consulta y reenvío"]
-        Q[("SQS<br/>cola de entrega")]
-        DLQ[("SQS<br/>DLQ")]
-        SUB[("DynamoDB<br/>suscripciones")]
-        DB[("DynamoDB<br/>notificaciones + intentos")]
-    end
+    DB[("DynamoDB<br/>notificaciones · intentos · suscripciones")]
 
     SVC -- "publica" --> K
-    CON -- "sondea" --> K
-    USR -- "consulta y reenvia" --> API
-    API -- "pide el token" --> IDP
+    K --> CON
+    CON -- "encola" --> Q
+    Q --> W
+    W -- "reintentos agotados" --> DLQ
     W -- "POST firmado HMAC" --> HOOK
 
-    CON -- "encola" --> Q
-    W -- "sondea y reencola reintentos" --> Q
-    API -- "encola el reenvio" --> Q
-    W -- "reintentos agotados" --> DLQ
-    Q -. "redrive automatico" .-> DLQ
+    USR --> API
+    API -- "pide el token" --> IDP
 
-    CON -- "persiste" --> DB
-    W -- "estado e intento" --> DB
-    API -- "consulta" --> DB
-    W -- "resuelve destino" --> SUB
-    API -- "administra" --> SUB
+    CON -. "leen y escriben" .-> DB
+    W -.-> DB
+    API -.-> DB
 
     style CON fill:#1f6feb,color:#fff,stroke:none
     style W fill:#1f6feb,color:#fff,stroke:none
     style API fill:#1f6feb,color:#fff,stroke:none
-
-    %% El recuadro no es un componente: solo marca la frontera de lo que se
-    %% despliega y opera aqui. Sin relleno, para que no se lea como una caja mas.
-    style sistema fill:none,stroke:#1f6feb,stroke-width:2px,stroke-dasharray:6 4
 ```
+
+Dos caminos. El de la izquierda es automatico: un evento entra por el bus y sale por el
+webhook del cliente. El de la derecha lo inicia el cliente cuando consulta o pide un reenvio.
+Se cruzan en un solo punto, el `worker`.
+
+Ni el bus ni la cola empujan: el `consumer` y el `worker` piden con long polling. Las lineas
+punteadas son los tres ejecutables usando los mismos almacenes; que escribe cada uno esta en
+los diagramas de secuencia.
 
 Dentro del recuadro, lo que se despliega y opera aquí: los tres ejecutables, la cola de
 trabajo y los almacenes. Fuera, lo que pertenece a otros: el bus de la plataforma, el
