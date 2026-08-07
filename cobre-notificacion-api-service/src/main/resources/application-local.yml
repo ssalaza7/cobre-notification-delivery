@@ -13,6 +13,12 @@ cobre:
     # ejecutando en la maquina y dentro de la red de compose.
     endpoint: ${SQS_ENDPOINT:http://localhost:9324}
 
+  dynamodb:
+    # DynamoDB Local. Misma variable dentro y fuera de la red de compose.
+    endpoint: ${DYNAMODB_ENDPOINT:http://localhost:8000}
+    # En local no hay infraestructura que declare la tabla: la crea el arranque.
+    create-table: true
+
   security:
     # Solo en local: deja /actuator/prometheus sin token, para que Prometheus lo raspe y
     # se pueda abrir en el navegador durante una demostracion.

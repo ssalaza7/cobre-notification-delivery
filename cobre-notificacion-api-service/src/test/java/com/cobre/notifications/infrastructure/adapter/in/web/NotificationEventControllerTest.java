@@ -68,14 +68,15 @@ class NotificationEventControllerTest {
     @DisplayName("el listado se acota siempre al cliente del token")
     void acota_el_listado_al_token() {
         when(queryUseCase.query(any())).thenReturn(Mono.just(
-                new PageResult<>(List.of(failedEvent()), 0, 20, 1)));
+                new PageResult<>(List.of(failedEvent()), 20, "siguiente")));
 
-        StepVerifier.create(controller.list(tokenFor(CLIENT_ID), null, null, null, 0, 20))
+        StepVerifier.create(controller.list(tokenFor(CLIENT_ID), null, null, null, null, 20))
                 .assertNext(page -> {
                     assertThat(page.data()).hasSize(1);
                     assertThat(page.data().get(0).eventId()).isEqualTo(EVENT_ID);
                     assertThat(page.data().get(0).deliveryStatus()).isEqualTo("failed");
-                    assertThat(page.totalElements()).isEqualTo(1);
+                    assertThat(page.nextCursor()).isEqualTo("siguiente");
+                    assertThat(page.hasNext()).isTrue();
                 })
                 .verifyComplete();
 
@@ -87,11 +88,11 @@ class NotificationEventControllerTest {
     @Test
     @DisplayName("traslada los filtros de fecha y estado al caso de uso")
     void traslada_los_filtros() {
-        when(queryUseCase.query(any())).thenReturn(Mono.just(new PageResult<>(List.of(), 1, 50, 0)));
+        when(queryUseCase.query(any())).thenReturn(Mono.just(new PageResult<>(List.of(), 50, null)));
         Instant from = Instant.parse("2024-03-15T00:00:00Z");
         Instant to = Instant.parse("2024-03-16T00:00:00Z");
 
-        StepVerifier.create(controller.list(tokenFor(CLIENT_ID), from, to, "failed", 1, 50))
+        StepVerifier.create(controller.list(tokenFor(CLIENT_ID), from, to, "failed", "abc", 50))
                 .expectNextCount(1)
                 .verifyComplete();
 
@@ -100,14 +101,14 @@ class NotificationEventControllerTest {
         assertThat(query.getValue().createdFrom()).isEqualTo(from);
         assertThat(query.getValue().createdTo()).isEqualTo(to);
         assertThat(query.getValue().deliveryStatus()).isEqualTo(DeliveryStatus.FAILED);
-        assertThat(query.getValue().page()).isEqualTo(1);
+        assertThat(query.getValue().cursor()).isEqualTo("abc");
         assertThat(query.getValue().size()).isEqualTo(50);
     }
 
     @Test
     @DisplayName("un estado desconocido se rechaza indicando los valores validos")
     void rechaza_estado_desconocido() {
-        assertThatThrownBy(() -> controller.list(tokenFor(CLIENT_ID), null, null, "entregado", 0, 20))
+        assertThatThrownBy(() -> controller.list(tokenFor(CLIENT_ID), null, null, "entregado", null, 20))
                 .isInstanceOf(InvalidQueryException.class)
                 .hasMessageContaining("completed")
                 .hasMessageContaining("failed");
@@ -154,7 +155,7 @@ class NotificationEventControllerTest {
     @Test
     @DisplayName("un token sin client_id no identifica a nadie y se rechaza")
     void rechaza_token_sin_cliente() {
-        assertThatThrownBy(() -> controller.list(tokenFor(null), null, null, null, 0, 20))
+        assertThatThrownBy(() -> controller.list(tokenFor(null), null, null, null, null, 20))
                 .isInstanceOf(InvalidBearerTokenException.class)
                 .hasMessageContaining("client_id");
     }

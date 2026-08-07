@@ -24,7 +24,8 @@ flowchart LR
     K[("Kafka<br/>cobre.platform.events")]
     Q[("SQS<br/>cola de entrega")]
     DLQ[("SQS<br/>DLQ")]
-    DB[("PostgreSQL<br/>eventos + bitácora")]
+    DB[("DynamoDB<br/>eventos + bitácora")]
+    PG[("PostgreSQL<br/>suscripciones + credenciales")]
     CLI["Webhook del cliente"]
     USR["Cliente"]
 
@@ -93,7 +94,7 @@ El razonamiento detrás de esta separación está en el [documento de diseño](d
 |---|---|
 | **Dominio** | El modelo y las reglas: estados, transiciones, política de reintentos. Y los puertos |
 | **Aplicación** | Los casos de uso. Orquestan el dominio y los puertos |
-| **Infraestructura** | Los adaptadores: Kafka, SQS, REST, R2DBC, WebClient, Micrometer |
+| **Infraestructura** | Los adaptadores: Kafka, SQS, REST, DynamoDB, R2DBC, WebClient, Micrometer |
 
 Las dependencias apuntan siempre hacia adentro. `DominioSinFrameworkTest` falla el build si el
 dominio importa Spring, R2DBC, Kafka o el SDK de AWS.
@@ -109,7 +110,7 @@ sequenceDiagram
     participant P as Plataforma
     participant K as Kafka
     participant CON as consumer
-    participant DB as PostgreSQL
+    participant DB as DynamoDB
     participant Q as SQS
     participant W as worker
     participant C as Webhook del cliente
@@ -191,7 +192,7 @@ Las respuestas 4xx no llegan aquí: se clasifican como fallo permanente y no se 
 sequenceDiagram
     participant U as Cliente
     participant API as api
-    participant DB as PostgreSQL
+    participant DB as DynamoDB
     participant Q as SQS
     participant W as worker
 
@@ -241,6 +242,22 @@ traza de un evento. Se cargan con `./scripts/kibana-import.sh`.
 Paneles: entregadas, fallidas, reintentos exitosos, reintentos agotados, reenvíos manuales,
 errores por código, latencia del webhook, clientes con entregas fallando y timeouts.
 
+### Listado paginado por cursor
+
+```json
+{
+  "data": [ { "event_id": "EVT008", "delivery_status": "completed" } ],
+  "size": 20,
+  "next_cursor": "c2sJTUVUQQpwawlFVkVOVCNFVlQwMDg…",
+  "has_next": true
+}
+```
+
+La primera página se pide sin `cursor`; para la siguiente se devuelve el `next_cursor` tal
+como llegó. No hay total de elementos: contarlos exige recorrer todas las notificaciones que
+cumplen el filtro, y ese recorrido costaría más que la propia página. El cursor es opaco y va
+atado al cliente que lo obtuvo, así que el de otro tenant se rechaza con 400.
+
 ### Bitácora devuelta por la API
 
 ```json
@@ -257,8 +274,8 @@ errores por código, latencia del webhook, clientes con entregas fallando y time
 
 ### Pruebas
 
-192 pruebas, sin fallos. Cobertura agregada de los cinco módulos: 94,3 % de instrucciones
-y 94,6 % de líneas. El build falla si desciende del 90 %.
+201 pruebas, sin fallos. Cobertura agregada de los cuatro módulos: 92,4 % de instrucciones
+y 92,4 % de líneas. El build falla si desciende del 90 %.
 
 ---
 
@@ -308,7 +325,7 @@ npx newman run postman/cobre-notification-delivery.postman_collection.json
 | **Kibana** | http://localhost:5601 | La traza de cada notificación. Vistas: `./scripts/kibana-import.sh` |
 | **Kafka** | http://localhost:8085 | El topic, sus mensajes y el grupo de consumo |
 | **SQS** | http://localhost:9325 | La cola de entrega y la DLQ, con su profundidad |
-| **Base de datos** | http://localhost:8086 | Las tablas y sus datos (`postgres` / `cobre` / `cobre`) |
+| **Base de datos** | http://localhost:8086 | Suscripciones y credenciales en PostgreSQL (`postgres` / `cobre` / `cobre`) |
 
 ### Empezar de cero
 
@@ -338,11 +355,11 @@ escribiendo a un archivo que ya no existe hasta que se reinician.
 docker compose --profile apps --profile observability down
 ```
 
-Añadiendo `-v` borra también los datos de PostgreSQL.
+Añadiendo `-v` borra también los datos de PostgreSQL y de DynamoDB.
 
 ### Puertos
 
-API 8080 · worker 8081 · consumer 8083 · Grafana 3000 · Kibana 5601 · Kafka 8085 · SQS 9325 · base 8086
+API 8080 · worker 8081 · consumer 8083 · Grafana 3000 · Kibana 5601 · Kafka 8085 · SQS 9325 · base 8086 · DynamoDB 8000
 
 El perfil `local` acorta los escalones de reintento para poder verlos completos y admite
 destinos HTTP. En cualquier otro perfil se exige HTTPS y se bloquean las direcciones internas.
@@ -365,7 +382,9 @@ destinos HTTP. En cualquier otro perfil se exige HTTPS y se bloquean las direcci
 |---|---|---|---|
 | **Kafka como bus, SQS como cola de trabajo** | Solo Kafka | Kafka no tiene retardo por mensaje, y su orden por partición deja que un webhook lento bloquee a los demás clientes | Si el retardo y el reparto sin orden llegaran al bus |
 | **Los tres comparten base de datos** | Cada uno dueño de sus datos, con CQRS | Comparten la máquina de estados; duplicarla daría divergencia, no independencia | Cuando la entrega y la consulta tengan equipos y SLA distintos |
-| **PostgreSQL** | Almacén clave-valor | Las consultas son relacionales: filtro por rango, estado y total paginado | Cuando la bitácora de intentos sature el nodo escritor |
+| **DynamoDB para eventos e intentos** | PostgreSQL para todo | El flujo de entrega solo accede por `event_id` y lista por cliente y fecha; ambas son consultas por clave, y la bitácora crece sin techo | Si hiciera falta agregar o cruzar eventos, que en clave-valor obliga a recorrerlos |
+| **PostgreSQL para suscripciones y credenciales** | Llevarlas también a DynamoDB | Son configuración del cliente, fuera del flujo de entrega, y su unicidad por `(client_id, event_type)` la hace cumplir la base | Si la configuración dejara de caber en un nodo, que no es el caso |
+| **Paginación por cursor** | Número de página con total | En clave-valor saltar a la página N cuesta leer las N anteriores, y el total exige recorrerlo todo | No aplica: el coste constante es la razón de ser del cursor |
 | **Los tres son reactivos** | La api bloqueante con hilos virtuales | Evita duplicar la capa de persistencia; el worker sí lo necesita, porque espera a terceros lentos | Si la api creciera hasta justificar su propio modelo de datos |
 | **Entrega al menos una vez** | Confirmar antes de procesar | Un duplicado que el cliente descarta cuesta menos que un pago no notificado | No aplica: el estándar en notificaciones de pago |
 | **Anti-SSRF por lista negra** | Allowlist de dominios verificados por cliente | Suficiente para la prueba; la allowlist exige verificación de dominio y fijar la IP resuelta | Antes de exponerlo a clientes reales |

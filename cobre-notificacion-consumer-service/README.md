@@ -6,7 +6,7 @@ No entrega nada ni expone API de negocio. Su única responsabilidad es traducir 
 bus en trabajo pendiente.
 
 ```
-Kafka  ──►  consumer  ──►  PostgreSQL   (guarda el evento)
+Kafka  ──►  consumer  ──►  DynamoDB     (guarda el evento)
                       ──►  SQS          (encola la entrega)
 ```
 
@@ -15,7 +15,7 @@ Kafka  ──►  consumer  ──►  PostgreSQL   (guarda el evento)
 | | |
 |---|---|
 | Entrada | Topic `cobre.platform.events` |
-| Salida | Fila en `notification_event` + mensaje en la cola de entrega |
+| Salida | Ítem `EVENT#{id} / META` en DynamoDB + mensaje en la cola de entrega |
 | Puerto HTTP | 8083, solo `/actuator` |
 
 El servidor HTTP existe para las sondas del orquestador y para que Prometheus raspe las

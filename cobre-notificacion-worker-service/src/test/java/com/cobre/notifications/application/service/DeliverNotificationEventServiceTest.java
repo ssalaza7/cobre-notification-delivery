@@ -69,7 +69,8 @@ class DeliverNotificationEventServiceTest {
                 metrics, retryPolicy, Clock.fixed(NOW, ZoneOffset.UTC), noJitter);
 
         when(attempts.append(any())).thenAnswer(call -> Mono.just(call.getArgument(0)));
-        when(events.update(any(), any())).thenAnswer(call -> Mono.just(call.getArgument(0)));
+        // update(previous, updated) devuelve el evento ya transicionado.
+        when(events.update(any(), any())).thenAnswer(call -> Mono.just(call.getArgument(1)));
         when(deliveryQueue.enqueueRetry(anyString(), anyString(), any())).thenReturn(Mono.empty());
         when(deliveryQueue.sendToDeadLetter(anyString(), anyString(), anyString())).thenReturn(Mono.empty());
     }
@@ -110,7 +111,7 @@ class DeliverNotificationEventServiceTest {
                 .verifyComplete();
 
         ArgumentCaptor<NotificationEvent> saved = ArgumentCaptor.forClass(NotificationEvent.class);
-        verify(events).update(saved.capture(), any());
+        verify(events).update(any(), saved.capture());
         assertThat(saved.getValue().deliveryStatus()).isEqualTo(DeliveryStatus.COMPLETED);
         assertThat(saved.getValue().attempts()).isEqualTo(1);
         assertThat(saved.getValue().webhookUrl()).isEqualTo("https://cliente.example.com/hook");
@@ -156,7 +157,7 @@ class DeliverNotificationEventServiceTest {
         verify(metrics).retryScheduled(EVENT_TYPE, 1);
 
         ArgumentCaptor<NotificationEvent> saved = ArgumentCaptor.forClass(NotificationEvent.class);
-        verify(events).update(saved.capture(), any());
+        verify(events).update(any(), saved.capture());
         assertThat(saved.getValue().deliveryStatus()).isEqualTo(DeliveryStatus.RETRYING);
         assertThat(saved.getValue().deliveryDate()).isNull();
     }
@@ -176,7 +177,7 @@ class DeliverNotificationEventServiceTest {
                 .verifyComplete();
 
         ArgumentCaptor<NotificationEvent> saved = ArgumentCaptor.forClass(NotificationEvent.class);
-        verify(events).update(saved.capture(), any());
+        verify(events).update(any(), saved.capture());
         assertThat(saved.getValue().deliveryStatus()).isEqualTo(DeliveryStatus.FAILED);
         assertThat(saved.getValue().attempts()).isEqualTo(3);
         assertThat(saved.getValue().deliveryStatus().isReplayable()).isTrue();
@@ -215,7 +216,7 @@ class DeliverNotificationEventServiceTest {
         verify(attempts, never()).append(any());
 
         ArgumentCaptor<NotificationEvent> saved = ArgumentCaptor.forClass(NotificationEvent.class);
-        verify(events).update(saved.capture(), any());
+        verify(events).update(any(), saved.capture());
         assertThat(saved.getValue().deliveryStatus()).isEqualTo(DeliveryStatus.DISCARDED);
         assertThat(saved.getValue().attempts()).isZero();
     }

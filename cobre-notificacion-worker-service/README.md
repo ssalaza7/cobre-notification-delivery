@@ -7,7 +7,8 @@ si se reintenta y cerrar el estado.
 
 ```
 SQS  ──►  worker  ──►  webhook del cliente   (POST firmado con HMAC)
-                  ──►  PostgreSQL            (estado + bitácora de intentos)
+                  ──►  DynamoDB              (estado + bitácora de intentos)
+                  ──►  PostgreSQL            (suscripción: destino y secreto de firma)
                   ──►  SQS                   (reintento con retardo, o DLQ)
 ```
 
@@ -16,7 +17,7 @@ SQS  ──►  worker  ──►  webhook del cliente   (POST firmado con HMAC)
 | | |
 |---|---|
 | Entrada | Cola de entrega en SQS |
-| Salida | POST al webhook · fila en `delivery_attempt` · estado en `notification_event` |
+| Salida | POST al webhook · ítem `ATTEMPT#…` · estado en el ítem `META` |
 | Puerto HTTP | 8081, solo `/actuator` |
 
 No expone API de negocio. El servidor existe para las sondas y las métricas.

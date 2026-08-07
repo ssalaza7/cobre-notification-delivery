@@ -13,6 +13,12 @@ cobre:
     # ejecutando en la maquina y dentro de la red de compose.
     endpoint: ${SQS_ENDPOINT:http://localhost:9324}
 
+  dynamodb:
+    # DynamoDB Local. Misma variable dentro y fuera de la red de compose.
+    endpoint: ${DYNAMODB_ENDPOINT:http://localhost:8000}
+    # En local no hay infraestructura que declare la tabla: la crea el arranque.
+    create-table: true
+
   webhook:
     require-https: false
     block-internal-addresses: false

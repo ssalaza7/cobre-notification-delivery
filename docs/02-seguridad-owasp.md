@@ -108,9 +108,9 @@ if (query.deliveryStatus() != null) {
 ```
 
 El enum se valida antes de llegar a la consulta —un `delivery_status` desconocido se rechaza
-con 400— y la paginación está acotada entre 1 y 100.
+con 400— y el tamaño de página está acotado entre 1 y 100. El cursor viaja opaco y se comprueba que pertenezca al cliente que consulta: pasar el de otro tenant se rechaza.
 
-📁 `common`: `R2dbcNotificationEventRepositoryAdapter.buildWhere`, `SqlBindings`, `EventQuery`
+📁 `kit`: `DynamoDbNotificationEventRepositoryAdapter.buildQuery`, `EventCursor`, `EventQuery`
 
 ---
 

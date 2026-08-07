@@ -53,6 +53,9 @@ public class NotificationEventController {
     /**
      * Listado paginado con filtro por fecha de creacion del evento y por estado de
      * entrega.
+     *
+     * <p>La paginacion es por cursor: {@code cursor} se omite en la primera peticion y
+     * despues se repite el {@code next_cursor} que devolvio la anterior.
      */
     @GetMapping
     public Mono<PagedResponse<NotificationEventResponse>> list(
@@ -60,7 +63,7 @@ public class NotificationEventController {
             @RequestParam(name = "created_from", required = false) Instant createdFrom,
             @RequestParam(name = "created_to", required = false) Instant createdTo,
             @RequestParam(name = "delivery_status", required = false) String deliveryStatus,
-            @RequestParam(name = "page", defaultValue = "0") int page,
+            @RequestParam(name = "cursor", required = false) String cursor,
             @RequestParam(name = "size", defaultValue = "20") int size) {
 
         EventQuery query = new EventQuery(
@@ -68,7 +71,7 @@ public class NotificationEventController {
                 createdFrom,
                 createdTo,
                 parseStatus(deliveryStatus),
-                page,
+                cursor,
                 size);
 
         return queryUseCase.query(query)

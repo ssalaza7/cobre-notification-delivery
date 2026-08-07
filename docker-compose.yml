@@ -18,6 +18,23 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
+  # Almacen de notificaciones e intentos de entrega. La imagen oficial de DynamoDB
+  # Local habla la misma API que el servicio, asi que el codigo es identico al que
+  # correria contra AWS: solo cambia la direccion.
+  #
+  # -sharedDb: sin esa opcion DynamoDB Local aisla los datos por par de credenciales,
+  # y cada servicio veria una base distinta.
+  dynamodb:
+    image: amazon/dynamodb-local:2.5.2
+    container_name: cobre-notifications-dynamodb
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "/data"]
+    working_dir: /home/dynamodblocal
+    user: root
+    ports:
+      - "${DYNAMODB_PORT:-8000}:8000"
+    volumes:
+      - dynamodb-data:/data
+
   # --- Mensajeria ----------------------------------------------------------------
   # Emuladores de la arquitectura objetivo: hablan los mismos protocolos que Kafka y
   # SQS, asi que el codigo es identico al que correria contra Confluent Cloud y AWS.
@@ -200,6 +217,7 @@ services:
     profiles: ["apps"]
     depends_on:
       postgres: {condition: service_healthy}
+      dynamodb: {condition: service_started}
       redpanda: {condition: service_healthy}
       elasticmq: {condition: service_started}
     environment: &entorno-comun
@@ -212,6 +230,7 @@ services:
       SQS_ENDPOINT: http://elasticmq:9324
       SQS_DELIVERY_QUEUE: http://elasticmq:9324/000000000000/notifications-delivery
       SQS_DLQ: http://elasticmq:9324/000000000000/notifications-dlq
+      DYNAMODB_ENDPOINT: http://dynamodb:8000
       LOGGING_FILE_NAME: /app-logs/consumer.json
     volumes:
       # Filebeat lee esta carpeta. Un archivo por servicio: si los tres
@@ -228,6 +247,7 @@ services:
     profiles: ["apps"]
     depends_on:
       postgres: {condition: service_healthy}
+      dynamodb: {condition: service_started}
       elasticmq: {condition: service_started}
     environment:
       <<: *entorno-comun
@@ -254,6 +274,7 @@ services:
     profiles: ["apps"]
     depends_on:
       postgres: {condition: service_healthy}
+      dynamodb: {condition: service_started}
       elasticmq: {condition: service_started}
     environment:
       <<: *entorno-comun
@@ -268,3 +289,4 @@ services:
 
 volumes:
   postgres-data:
+  dynamodb-data:

@@ -462,7 +462,7 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/notification_events?page=0&size=20",
+              "raw": "{{base_url}}/notification_events?size=20",
               "host": [
                 "{{base_url}}"
               ],
@@ -471,16 +471,18 @@
               ],
               "query": [
                 {
-                  "key": "page",
-                  "value": "0"
-                },
-                {
                   "key": "size",
                   "value": "20"
+                },
+                {
+                  "key": "cursor",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Se deja vacio en la primera pagina. Para la siguiente se copia aqui el next_cursor de la respuesta anterior."
                 }
               ]
             },
-            "description": "Paginado y acotado al cliente del token. No existe ningun parametro para pedir los datos de otro: el client_id sale del token."
+            "description": "Paginado por cursor y acotado al cliente del token. No existe ningun parametro para pedir los datos de otro: el client_id sale del token, y un cursor de otro cliente se rechaza."
           },
           "event": [
             {

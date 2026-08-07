@@ -13,6 +13,7 @@ import com.cobre.notifications.domain.model.DeliveryAttempt;
 import com.cobre.notifications.domain.model.DeliveryStatus;
 import com.cobre.notifications.domain.model.EventQuery;
 import com.cobre.notifications.domain.model.NotificationEvent;
+import com.cobre.notifications.domain.model.PageResult;
 import com.cobre.notifications.domain.model.WebhookDeliveryResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -26,6 +27,7 @@ import reactor.test.StepVerifier;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -66,33 +68,43 @@ class SelfServiceUseCasesTest {
     class Query {
 
         @Test
-        @DisplayName("devuelve la pagina junto con el total para poder paginar")
-        void devuelve_pagina_y_total() {
-            EventQuery query = new EventQuery(CLIENT_ID, null, null, DeliveryStatus.FAILED, 0, 20);
-            when(events.search(query)).thenReturn(Flux.just(event(DeliveryStatus.FAILED)));
-            when(events.count(query)).thenReturn(Mono.just(42L));
+        @DisplayName("devuelve la pagina junto con el cursor para pedir la siguiente")
+        void devuelve_pagina_y_cursor() {
+            EventQuery query = new EventQuery(CLIENT_ID, null, null, DeliveryStatus.FAILED, null, 20);
+            when(events.search(query)).thenReturn(Mono.just(
+                    new PageResult<>(List.of(event(DeliveryStatus.FAILED)), 20, "siguiente")));
 
             StepVerifier.create(new QueryNotificationEventsService(events).query(query))
                     .assertNext(page -> {
                         assertThat(page.items()).hasSize(1);
-                        assertThat(page.totalElements()).isEqualTo(42);
-                        assertThat(page.totalPages()).isEqualTo(3);
+                        assertThat(page.nextCursor()).isEqualTo("siguiente");
                         assertThat(page.hasNext()).isTrue();
                     })
                     .verifyComplete();
         }
 
         @Test
+        @DisplayName("la ultima pagina no lleva cursor")
+        void ultima_pagina_sin_cursor() {
+            EventQuery query = new EventQuery(CLIENT_ID, null, null, null, "anterior", 20);
+            when(events.search(query)).thenReturn(Mono.just(
+                    new PageResult<>(List.of(event(DeliveryStatus.COMPLETED)), 20, null)));
+
+            StepVerifier.create(new QueryNotificationEventsService(events).query(query))
+                    .assertNext(page -> assertThat(page.hasNext()).isFalse())
+                    .verifyComplete();
+        }
+
+        @Test
         @DisplayName("un cliente sin notificaciones recibe una pagina vacia, no un error")
         void pagina_vacia() {
-            EventQuery query = new EventQuery("CLIENT999", null, null, null, 0, 20);
-            when(events.search(query)).thenReturn(Flux.empty());
-            when(events.count(query)).thenReturn(Mono.just(0L));
+            EventQuery query = new EventQuery("CLIENT999", null, null, null, null, 20);
+            when(events.search(query)).thenReturn(Mono.just(new PageResult<>(List.of(), 20, null)));
 
             StepVerifier.create(new QueryNotificationEventsService(events).query(query))
                     .assertNext(page -> {
                         assertThat(page.items()).isEmpty();
-                        assertThat(page.totalElements()).isZero();
+                        assertThat(page.hasNext()).isFalse();
                     })
                     .verifyComplete();
         }
@@ -146,7 +158,8 @@ class SelfServiceUseCasesTest {
         @BeforeEach
         void setUp() {
             service = new ReplayNotificationEventService(events, deliveryQueue, metrics, clock);
-            when(events.update(any(), any())).thenAnswer(call -> Mono.just(call.getArgument(0)));
+            // update(previous, updated) devuelve el evento ya transicionado.
+            when(events.update(any(), any())).thenAnswer(call -> Mono.just(call.getArgument(1)));
             when(deliveryQueue.enqueue(anyString(), anyString())).thenReturn(Mono.empty());
         }
 

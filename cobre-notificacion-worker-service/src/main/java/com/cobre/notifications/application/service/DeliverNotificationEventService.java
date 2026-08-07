@@ -11,7 +11,6 @@ import com.cobre.notifications.domain.exception.NotificationEventNotFoundExcepti
 import com.cobre.notifications.domain.model.AttemptOutcome;
 import com.cobre.notifications.domain.model.DeliveryAttempt;
 import com.cobre.notifications.domain.model.DeliveryOutcome;
-import com.cobre.notifications.domain.model.EventVersion;
 import com.cobre.notifications.domain.model.NotificationEvent;
 import com.cobre.notifications.domain.model.RetryPolicy;
 import com.cobre.notifications.domain.model.Subscription;
@@ -136,8 +135,7 @@ public class DeliverNotificationEventService implements DeliverNotificationEvent
     }
 
     private Mono<DeliveryOutcome> complete(NotificationEvent event, WebhookDeliveryResult result, Instant now) {
-        EventVersion expected = event.version();
-        return events.update(event.markDelivered(result, now), expected)
+        return events.update(event, event.markDelivered(result, now))
                 .doOnNext(saved -> {
                     metrics.deliverySettled(saved.eventType(), saved.deliveryStatus(), saved.attempts() > 1);
                     log.info("Notificacion {} entregada al cliente {} en el intento {}",
@@ -149,8 +147,7 @@ public class DeliverNotificationEventService implements DeliverNotificationEvent
 
     private Mono<DeliveryOutcome> scheduleRetry(
             NotificationEvent event, WebhookDeliveryResult result, Instant now, Duration delay) {
-        EventVersion expected = event.version();
-        return events.update(event.markRetrying(result, now), expected)
+        return events.update(event, event.markRetrying(result, now))
                 .flatMap(saved -> deliveryQueue.enqueueRetry(saved.eventId(), saved.clientId(), delay)
                         .doOnSuccess(ignored -> {
                             metrics.retryScheduled(saved.eventType(), saved.attempts());
@@ -163,8 +160,7 @@ public class DeliverNotificationEventService implements DeliverNotificationEvent
 
     private Mono<DeliveryOutcome> failDefinitively(
             NotificationEvent event, WebhookDeliveryResult result, Instant now, String reason) {
-        EventVersion expected = event.version();
-        return events.update(event.markFailed(result, now), expected)
+        return events.update(event, event.markFailed(result, now))
                 .flatMap(saved -> deliveryQueue.sendToDeadLetter(saved.eventId(), saved.clientId(), reason)
                         .doOnSuccess(ignored -> {
                             metrics.deliverySettled(saved.eventType(), saved.deliveryStatus(), saved.attempts() > 1);
@@ -178,7 +174,7 @@ public class DeliverNotificationEventService implements DeliverNotificationEvent
 
     private Mono<DeliveryOutcome> discard(NotificationEvent event) {
         Instant now = clock.instant();
-        return events.update(event.markDiscarded(NO_SUBSCRIPTION_REASON, now), event.version())
+        return events.update(event, event.markDiscarded(NO_SUBSCRIPTION_REASON, now))
                 .doOnNext(saved -> {
                     metrics.deliverySettled(saved.eventType(), saved.deliveryStatus(), false);
                     log.info("Evento {} descartado: el cliente {} no tiene suscripcion activa para {}",

@@ -6,7 +6,8 @@ Es el único módulo con superficie HTTP entrante y, por tanto, el único que ne
 seguridad, emisión de tokens y límite de peticiones.
 
 ```
-cliente  ──►  api  ──►  PostgreSQL   (consulta y actualiza)
+cliente  ──►  api  ──►  DynamoDB     (consulta notificaciones y reabre entregas)
+                  └──►  PostgreSQL   (suscripciones y credenciales)
                    ──►  SQS          (encola el reenvío)
 ```
 

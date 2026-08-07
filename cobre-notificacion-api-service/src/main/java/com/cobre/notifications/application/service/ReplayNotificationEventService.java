@@ -52,7 +52,7 @@ public class ReplayNotificationEventService implements ReplayNotificationEventUs
 
     private Mono<NotificationEvent> reopen(NotificationEvent event) {
         NotificationEvent reopened = event.preparedForReplay(clock.instant());
-        return events.update(reopened, event.version())
+        return events.update(event, reopened)
                 // Vacio significa que otra peticion de reenvio gano la carrera; el
                 // evento ya quedo encolado por ella, asi que no se encola dos veces.
                 .switchIfEmpty(Mono.error(new NotificationEventNotFoundException(event.eventId())))

@@ -10,8 +10,9 @@ import reactor.core.publisher.Mono;
 /**
  * Listado paginado de notificaciones del cliente autenticado.
  *
- * <p>La pagina y el total se resuelven en paralelo: son dos consultas independientes
- * y encadenarlas duplicaria la latencia sin ganar nada.
+ * <p>Una sola consulta: la pagina trae consigo el cursor para continuar, asi que no hay
+ * que contar el total aparte. Contarlo obligaria a recorrer todas las notificaciones que
+ * cumplen el filtro solo para escribir un numero en la respuesta.
  */
 public class QueryNotificationEventsService implements QueryNotificationEventsUseCase {
 
@@ -23,7 +24,6 @@ public class QueryNotificationEventsService implements QueryNotificationEventsUs
 
     @Override
     public Mono<PageResult<NotificationEvent>> query(EventQuery query) {
-        return Mono.zip(events.search(query).collectList(), events.count(query))
-                .map(tuple -> new PageResult<>(tuple.getT1(), query.page(), query.size(), tuple.getT2()));
+        return events.search(query);
     }
 }

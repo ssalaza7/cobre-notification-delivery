@@ -66,17 +66,22 @@ class DomainValueObjectsTest {
     class EventQueryTest {
 
         @Test
-        @DisplayName("calcula el desplazamiento de la pagina")
-        void calcula_offset() {
-            EventQuery query = new EventQuery("CLIENT001", null, null, null, 3, 20);
+        @DisplayName("la primera pagina es la que llega sin cursor")
+        void detecta_primera_pagina() {
+            assertThat(new EventQuery("CLIENT001", null, null, null, null, 20).isFirstPage()).isTrue();
+            assertThat(new EventQuery("CLIENT001", null, null, null, "abc", 20).isFirstPage()).isFalse();
+        }
 
-            assertThat(query.offset()).isEqualTo(60);
+        @Test
+        @DisplayName("un cursor en blanco se trata como ausente, no como cursor invalido")
+        void cursor_en_blanco_equivale_a_ausente() {
+            assertThat(new EventQuery("CLIENT001", null, null, null, "   ", 20).cursor()).isNull();
         }
 
         @Test
         @DisplayName("no se puede consultar sin cliente: es lo que impide leer datos ajenos")
         void exige_cliente() {
-            assertThatThrownBy(() -> new EventQuery(null, null, null, null, 0, 20))
+            assertThatThrownBy(() -> new EventQuery(null, null, null, null, null, 20))
                     .isInstanceOf(InvalidQueryException.class)
                     .hasMessageContaining("client_id");
         }
@@ -84,27 +89,23 @@ class DomainValueObjectsTest {
         @Test
         @DisplayName("acota el tamano de pagina para que nadie pida la tabla entera")
         void acota_el_tamano() {
-            assertThatThrownBy(() -> new EventQuery("CLIENT001", null, null, null, 0, 0))
+            assertThatThrownBy(() -> new EventQuery("CLIENT001", null, null, null, null, 0))
                     .isInstanceOf(InvalidQueryException.class);
 
             assertThatThrownBy(() -> new EventQuery(
-                    "CLIENT001", null, null, null, 0, EventQuery.MAX_PAGE_SIZE + 1))
+                    "CLIENT001", null, null, null, null, EventQuery.MAX_PAGE_SIZE + 1))
                     .isInstanceOf(InvalidQueryException.class)
                     .hasMessageContaining("size");
         }
 
         @Test
-        @DisplayName("rechaza paginas negativas y rangos de fecha invertidos")
-        void valida_rango_y_pagina() {
-            assertThatThrownBy(() -> new EventQuery("CLIENT001", null, null, null, -1, 20))
-                    .isInstanceOf(InvalidQueryException.class)
-                    .hasMessageContaining("page");
-
+        @DisplayName("rechaza rangos de fecha invertidos")
+        void valida_rango() {
             assertThatThrownBy(() -> new EventQuery(
                     "CLIENT001",
                     Instant.parse("2024-03-16T00:00:00Z"),
                     Instant.parse("2024-03-15T00:00:00Z"),
-                    null, 0, 20))
+                    null, null, 20))
                     .isInstanceOf(InvalidQueryException.class)
                     .hasMessageContaining("created_from");
         }
@@ -115,28 +116,28 @@ class DomainValueObjectsTest {
     class PageResultTest {
 
         @Test
-        @DisplayName("deriva el total de paginas y si hay siguiente")
-        void calcula_paginacion() {
-            PageResult<String> page = new PageResult<>(List.of("a", "b"), 0, 2, 5);
+        @DisplayName("con cursor de continuacion queda pagina siguiente")
+        void anuncia_siguiente() {
+            PageResult<String> page = new PageResult<>(List.of("a", "b"), 2, "cursor");
 
-            assertThat(page.totalPages()).isEqualTo(3);
+            assertThat(page.items()).hasSize(2);
             assertThat(page.hasNext()).isTrue();
         }
 
         @Test
         @DisplayName("la ultima pagina no anuncia una siguiente")
         void detecta_ultima_pagina() {
-            PageResult<String> page = new PageResult<>(List.of("e"), 2, 2, 5);
+            PageResult<String> page = new PageResult<>(List.of("e"), 2, null);
 
             assertThat(page.hasNext()).isFalse();
         }
 
         @Test
-        @DisplayName("sin resultados no hay paginas")
+        @DisplayName("sin resultados no hay pagina siguiente")
         void pagina_vacia() {
-            PageResult<String> page = new PageResult<>(List.of(), 0, 20, 0);
+            PageResult<String> page = new PageResult<>(List.of(), 20, null);
 
-            assertThat(page.totalPages()).isZero();
+            assertThat(page.items()).isEmpty();
             assertThat(page.hasNext()).isFalse();
         }
     }

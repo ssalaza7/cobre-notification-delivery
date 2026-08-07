@@ -77,7 +77,8 @@ flowchart TB
         dlq[("DLQ")]
     end
 
-    db[("Base de datos relacional<br/>notification_event<br/>delivery_attempt<br/>subscription")]
+    db[("DynamoDB<br/>notificaciones + intentos")]
+    pg[("PostgreSQL<br/>subscription + api_credential")]
     hook["Webhook del cliente"]
     obs["Logs y métricas"]
 
@@ -292,11 +293,49 @@ reenviar algo en curso competiría con el reintento ya programado.
 
 ## 7. Modelo de datos
 
+El modelo está partido en dos almacenes, por el papel que cumple cada dato.
+
+**DynamoDB — notificaciones y bitácora.** Una sola tabla. El evento y sus intentos comparten
+partición, de modo que el detalle de la API se resuelve con una consulta en vez de dos.
+
+| `pk` | `sk` | Qué es |
+|---|---|---|
+| `EVENT#{event_id}` | `META` | Estado de la notificación |
+| `EVENT#{event_id}` | `ATTEMPT#{reenvío}#{intento}` | Un intento de entrega |
+| `STATS#{partición}` | `STATUS#{estado}` | Contador de backlog por estado |
+
+Índice secundario `gsi_client_created`, con `CLIENT#{client_id}` como partición y
+`{created_at}#{event_id}` como orden. Sostiene el listado de la API, que siempre está acotado
+al tenant y ordenado por fecha; el desempate por identificador evita que dos eventos del mismo
+instante salten entre páginas contiguas. El filtro por estado se aplica sobre lo leído, sin
+índice propio.
+
+- **`event_id` como partición** hace idempotente la ingesta: una escritura condicionada a que
+  la clave no exista resuelve la reentrega del broker.
+- **Los intentos son ítems propios, no una lista dentro del evento.** El TTL de DynamoDB expira
+  ítems y no elementos de una lista; cada reenvío manual abre un ciclo nuevo, así que la lista
+  no tendría cota frente al límite de 400 KB por ítem; y cada intento obligaría a reescribir el
+  evento entero, contenido incluido, que es lo que se factura como escritura.
+- **La bitácora es de solo adición y caduca por TTL.** Nunca se actualiza ni se borra, lo que
+  permite responder con datos a una reclamación; pasado el plazo el evento conserva su estado
+  final, que es lo que no caduca.
+- **El número de reenvío va delante del de intento** en la clave de orden porque cada reenvío
+  reinicia el contador: ordenar solo por número de intento mezclaría ciclos distintos.
+- **El par `(attempts, replay_count)` actúa como versión optimista.** La actualización va
+  condicionada a que siga igual, así que si dos consumidores procesan el mismo evento a la vez
+  solo uno escribe; el otro detecta que su versión quedó obsoleta.
+- **Los contadores de backlog se reparten en varias particiones.** Todas las transiciones del
+  sistema escriben ahí, y un único ítem concentraría cada escritura del flujo en una partición.
+  Se actualizan dentro de la misma transacción que el estado, de modo que no pueden desviarse.
+
+**PostgreSQL — suscripciones y credenciales.** Se quedan en relacional porque son configuración
+del cliente, no parte del flujo de entrega: cambian rara vez, las escribe solo la API
+self-service y sobreviven a todos los eventos. La unicidad de `(client_id, event_type)` entre
+las activas la hace cumplir un índice parcial, y la resolución del destino prioriza la
+suscripción específica sobre el comodín.
+
 ```mermaid
 erDiagram
-    SUBSCRIPTION ||--o{ NOTIFICATION_EVENT : "determina destino"
-    NOTIFICATION_EVENT ||--o{ DELIVERY_ATTEMPT : "registra"
-
     SUBSCRIPTION {
         uuid id PK
         varchar client_id
@@ -305,39 +344,13 @@ erDiagram
         varchar signing_secret
         boolean active
     }
-    NOTIFICATION_EVENT {
-        varchar event_id PK "clave natural de la plataforma"
-        varchar client_id
-        varchar event_type
-        text content
-        timestamptz created_at
-        varchar delivery_status
-        timestamptz delivery_date
-        int attempts "versión optimista"
-        int replay_count "versión optimista"
-    }
-    DELIVERY_ATTEMPT {
-        uuid id PK
-        varchar event_id FK
-        int attempt_number
-        int replay_count
-        timestamptz attempted_at
-        varchar outcome
-        int http_status
-        bigint duration_ms
-        varchar error_message
+    API_CREDENTIAL {
+        varchar client_id PK
+        varchar secret_hash "bcrypt"
+        varchar scopes
+        boolean active
     }
 ```
-
-- **`event_id` como clave primaria** hace idempotente la ingesta: un `ON CONFLICT DO NOTHING`
-  resuelve la reentrega del broker.
-- **`delivery_attempt` es de solo adición.** Nunca se actualiza ni se borra, lo que permite
-  responder con datos a una reclamación sobre entregas no recibidas.
-- **Índices `(client_id, created_at DESC)` y `(client_id, delivery_status, created_at DESC)`**,
-  con `client_id` en primera posición porque toda consulta está acotada al tenant.
-- **El par `(attempts, replay_count)` actúa como versión optimista.** Si dos consumidores
-  procesan el mismo evento simultáneamente, solo uno escribe; el otro detecta que su versión
-  quedó obsoleta.
 
 **Supuesto documentado.** El archivo `notification_events.json` no incluye fecha de creación,
 solo `delivery_date`. Como la API debe filtrar por fecha de creación del evento, se modela
@@ -463,6 +476,7 @@ propia política de autoescalado y su propio ciclo de despliegue.
 |---|---|---|
 | Redpanda (Kafka local) | Confluent Cloud | Ninguno: mismo protocolo |
 | ElasticMQ (SQS local) | SQS | Ninguno: mismo protocolo |
+| DynamoDB Local | DynamoDB | Ninguno: mismo SDK, solo cambia el endpoint |
 | PostgreSQL en Docker | Aurora PostgreSQL | Ninguno: sigue siendo R2DBC |
 | Filebeat + Elasticsearch | FireLens → OpenSearch Service | Ninguno: la app escribe ECS a stdout |
 | Prometheus | Datadog Agent (OpenMetrics) | Ninguno: el `MetricsPort` no cambia |

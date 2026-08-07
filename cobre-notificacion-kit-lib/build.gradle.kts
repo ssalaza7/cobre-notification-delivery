@@ -19,7 +19,8 @@ dependencies {
 
     api("org.springframework.boot:spring-boot-starter-json")
 
-    // Persistencia: los tres ejecutables leen y escriben las mismas tablas.
+    // Persistencia relacional: suscripciones y credenciales. Es configuracion del
+    // cliente, no parte del flujo de entrega, y se queda en Postgres.
     api("org.springframework.boot:spring-boot-starter-data-r2dbc")
     runtimeOnly("org.postgresql:r2dbc-postgresql")
 
@@ -35,6 +36,10 @@ dependencies {
     api(platform("software.amazon.awssdk:bom:${rootProject.extra["awsSdkVersion"]}"))
     api("software.amazon.awssdk:sqs")
     api("software.amazon.awssdk:netty-nio-client")
+
+    // Notificaciones e intentos de entrega. El cliente asincrono devuelve
+    // CompletableFuture, que se envuelve en Mono sin bloquear ningun hilo.
+    api("software.amazon.awssdk:dynamodb")
 
     // Observabilidad: los tres publican metricas y escriben logs correlacionados.
     api("org.springframework.boot:spring-boot-starter-actuator")

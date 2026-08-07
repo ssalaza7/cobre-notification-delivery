@@ -9,6 +9,7 @@ import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.dynamodb.DynamoDbAsyncClient;
 import software.amazon.awssdk.services.sqs.SqsAsyncClient;
 import tools.jackson.databind.ObjectMapper;
 
@@ -26,7 +27,7 @@ import java.util.random.RandomGenerator;
  * cliente de webhooks, la cadena de seguridad— se declara en cada modulo.
  */
 @Configuration
-@EnableConfigurationProperties({SqsProperties.class, WebhookProperties.class})
+@EnableConfigurationProperties({SqsProperties.class, WebhookProperties.class, DynamoDbProperties.class})
 public class CommonConfig {
 
     @Bean
@@ -70,5 +71,23 @@ public class CommonConfig {
     DeliveryQueuePort deliveryQueuePort(
             SqsAsyncClient sqs, SqsProperties properties, ObjectMapper objectMapper) {
         return new SqsDeliveryQueueAdapter(sqs, properties, objectMapper);
+    }
+
+    /**
+     * Cliente de DynamoDB. Mismo criterio de credenciales que el de SQS: fijas cuando
+     * hay endpoint —lo que pide un emulador local— y tomadas del entorno en AWS.
+     */
+    @Bean(destroyMethod = "close")
+    DynamoDbAsyncClient dynamoDbAsyncClient(DynamoDbProperties properties) {
+        var builder = DynamoDbAsyncClient.builder().region(Region.of(properties.region()));
+
+        if (properties.endpoint() != null && !properties.endpoint().isBlank()) {
+            builder.endpointOverride(URI.create(properties.endpoint()))
+                    .credentialsProvider(StaticCredentialsProvider.create(
+                            AwsBasicCredentials.create("local", "local")));
+        } else {
+            builder.credentialsProvider(DefaultCredentialsProvider.create());
+        }
+        return builder.build();
     }
 }

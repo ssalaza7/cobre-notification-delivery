@@ -29,6 +29,21 @@ spring:
     baseline-on-migrate: true
 
 cobre:
+  # Almacen de notificaciones e intentos de entrega.
+  dynamodb:
+    region: ${AWS_REGION:us-east-1}
+    # Vacio en AWS, donde vale el endpoint real del servicio. Se define solo para
+    # apuntar a DynamoDB Local.
+    endpoint: ${DYNAMODB_ENDPOINT:}
+    table-name: ${DYNAMODB_TABLE:notifications}
+    client-index: gsi_client_created
+    # Cuanto se conserva la bitacora de intentos. El estado final del evento no caduca.
+    attempt-ttl: ${DYNAMODB_ATTEMPT_TTL:90d}
+    counter-shards: 10
+    # La tabla la declara la infraestructura, no la aplicacion. Solo el perfil local
+    # la crea al arrancar.
+    create-table: ${DYNAMODB_CREATE_TABLE:false}
+
   # Cola de trabajo de las entregas, con su cola muerta.
   sqs:
     region: ${AWS_REGION:us-east-1}
