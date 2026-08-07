@@ -26,7 +26,4 @@ public interface SubscriptionRepositoryPort {
      * nada en el intervalo.
      */
     Mono<Subscription> save(Subscription subscription);
-
-    /** @return {@code true} si habia una suscripcion activa que desactivar */
-    Mono<Boolean> deactivate(String clientId, String eventType);
 }

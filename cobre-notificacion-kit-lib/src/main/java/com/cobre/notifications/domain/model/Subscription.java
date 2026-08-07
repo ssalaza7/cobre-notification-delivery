@@ -47,14 +47,6 @@ public record Subscription(
     }
 
     /**
-     * Copia desactivada. No se borra la fila: la bitacora de lo ya entregado apunta a
-     * ella y borrarla dejaria el historial huerfano.
-     */
-    public Subscription deactivated() {
-        return new Subscription(id, clientId, eventType, webhookUrl, signingSecret, false);
-    }
-
-    /**
      * Devuelve una copia apuntando a otra URL. Se usa unicamente para la demo en vivo,
      * donde la URL destino se entrega el mismo dia de la presentacion.
      */

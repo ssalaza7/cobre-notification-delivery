@@ -4,7 +4,6 @@ import com.cobre.notifications.application.port.out.SecretGeneratorPort;
 import com.cobre.notifications.application.port.out.SubscriptionRepositoryPort;
 import com.cobre.notifications.application.port.out.WebhookUrlPolicyPort;
 import com.cobre.notifications.domain.exception.InvalidWebhookUrlException;
-import com.cobre.notifications.domain.exception.SubscriptionNotFoundException;
 import com.cobre.notifications.domain.model.Subscription;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -110,23 +109,5 @@ class ManageSubscriptionsServiceTest {
         ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
         verify(subscriptions).findAllActiveByClientId(captor.capture());
         assertThat(captor.getValue()).isEqualTo(CLIENTE);
-    }
-
-    @Test
-    @DisplayName("dar de baja algo que no existe responde 404, no un exito silencioso")
-    void baja_inexistente() {
-        when(subscriptions.deactivate(CLIENTE, "no_existe")).thenReturn(Mono.just(false));
-
-        StepVerifier.create(service.deactivate(CLIENTE, "no_existe"))
-                .expectError(SubscriptionNotFoundException.class)
-                .verify();
-    }
-
-    @Test
-    @DisplayName("dar de baja una suscripcion activa la desactiva sin error")
-    void baja_correcta() {
-        when(subscriptions.deactivate(CLIENTE, "*")).thenReturn(Mono.just(true));
-
-        StepVerifier.create(service.deactivate(CLIENTE, "*")).verifyComplete();
     }
 }

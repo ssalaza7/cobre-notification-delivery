@@ -22,7 +22,4 @@ public interface ManageSubscriptionsUseCase {
     Mono<Subscription> register(String clientId, String eventType, String webhookUrl);
 
     Flux<Subscription> list(String clientId);
-
-    /** Deja de entregar sin borrar el historial. */
-    Mono<Void> deactivate(String clientId, String eventType);
 }

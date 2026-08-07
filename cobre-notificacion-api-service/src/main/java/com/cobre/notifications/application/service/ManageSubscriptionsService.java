@@ -4,7 +4,6 @@ import com.cobre.notifications.application.port.in.ManageSubscriptionsUseCase;
 import com.cobre.notifications.application.port.out.SecretGeneratorPort;
 import com.cobre.notifications.application.port.out.SubscriptionRepositoryPort;
 import com.cobre.notifications.application.port.out.WebhookUrlPolicyPort;
-import com.cobre.notifications.domain.exception.SubscriptionNotFoundException;
 import com.cobre.notifications.domain.model.Subscription;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -65,13 +64,5 @@ public class ManageSubscriptionsService implements ManageSubscriptionsUseCase {
     @Override
     public Flux<Subscription> list(String clientId) {
         return subscriptions.findAllActiveByClientId(clientId);
-    }
-
-    @Override
-    public Mono<Void> deactivate(String clientId, String eventType) {
-        return subscriptions.deactivate(clientId, eventType)
-                .flatMap(existia -> Boolean.TRUE.equals(existia)
-                        ? Mono.empty()
-                        : Mono.error(new SubscriptionNotFoundException(eventType)));
     }
 }

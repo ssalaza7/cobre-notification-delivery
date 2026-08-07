@@ -38,17 +38,11 @@ lo expondría en cada log, caché y captura de pantalla.
 El `client_id` sale del token y nunca del cuerpo. Si viniera en el cuerpo, cualquiera podría
 registrar un webhook a nombre de otro y desviarse sus notificaciones.
 
-### Consulta y baja
+### Consulta
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/subscriptions
-
-curl -X DELETE -H "Authorization: Bearer $TOKEN" \
-  http://localhost:8080/subscriptions/credit_transfer
 ```
-
-La baja responde 204 y desactiva la suscripción en lugar de borrarla, porque la bitácora de
-entregas anteriores hace referencia a ella. Dar de baja algo inexistente responde 404.
 
 ### Actualizar el destino
 

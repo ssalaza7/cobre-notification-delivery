@@ -85,23 +85,6 @@ public class R2dbcSubscriptionRepositoryAdapter implements SubscriptionRepositor
     }
 
     /**
-     * Desactiva en lugar de borrar: la bitacora de lo ya entregado apunta a esta fila y
-     * eliminarla dejaria el historial huerfano.
-     */
-    @Override
-    public Mono<Boolean> deactivate(String clientId, String eventType) {
-        String sql = "UPDATE subscription SET active = FALSE"
-                + " WHERE client_id = :clientId AND event_type = :eventType AND active";
-
-        return db.sql(sql)
-                .bind("clientId", clientId)
-                .bind("eventType", eventType)
-                .fetch()
-                .rowsUpdated()
-                .map(filas -> filas > 0);
-    }
-
-    /**
      * Sustituye la URL configurada cuando se define {@code cobre.webhook.override-url}.
      *
      * <p>Existe solo para la demostracion en vivo, donde la URL destino se entrega el
