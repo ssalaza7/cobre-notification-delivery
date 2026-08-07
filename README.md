@@ -19,44 +19,59 @@ GET  /subscriptions                    las suscripciones del cliente
 ## 1. Arquitectura
 
 ```mermaid
-flowchart LR
+flowchart TB
     SVC["Servicios de la plataforma<br/>pagos · transferencias · saldos"]
+    USR["Cliente<br/>consulta y reenvía"]
     K[("Kafka<br/>cobre.platform.events")]
-    Q[("SQS<br/>cola de entrega")]
-    DLQ[("SQS<br/>DLQ")]
-    DB[("DynamoDB<br/>eventos + bitácora")]
-    PG[("DynamoDB<br/>suscripciones")]
     IDP["Proveedor de identidad<br/>OIDC"]
     CLI["Webhook del cliente"]
-    USR["Cliente"]
 
     subgraph svc["Entrega de notificaciones"]
+        direction LR
         CON["<b>consumer</b><br/>ingesta y encola"]
         W["<b>worker</b><br/>entrega y reintenta"]
         API["<b>api</b><br/>consulta y reenvío"]
     end
 
-    SVC -->|publica| K
-    K -->|consume| CON
-    CON -->|persiste| DB
-    CON -->|encola| Q
-    Q -->|toma la orden| W
-    W -->|registra intento<br/>y estado| DB
-    W -->|consulta suscripción| PG
-    W -->|POST firmado HMAC| CLI
-    W -->|reencola con retardo| Q
-    W -->|reintentos agotados| DLQ
-    Q -.->|mensaje no confirmado| DLQ
-    USR -->|consulta · reenvía| API
-    API -->|consulta| DB
-    API -->|suscripciones| PG
-    API -->|token| IDP
-    API -->|encola reenvío| Q
+    subgraph colas["Cola de trabajo"]
+        direction LR
+        Q[("SQS<br/>entrega")]
+        DLQ[("SQS<br/>cola muerta")]
+    end
+
+    subgraph datos["Almacenes"]
+        direction LR
+        SUB[("DynamoDB<br/>suscripciones")]
+        DB[("DynamoDB<br/>notificaciones + intentos")]
+    end
+
+    SVC --> K --> CON
+    USR --> API
+    API --> IDP
+
+    CON --> Q
+    Q --> W
+    W -- "reintento con retardo" --> Q
+    API -- "reenvío" --> Q
+    W -- "reintentos agotados" --> DLQ
+    Q -. "mensaje no confirmado" .-> DLQ
+
+    W -- "POST firmado HMAC" --> CLI
+
+    CON --> DB
+    W --> DB
+    API --> DB
+    W -- "resuelve destino" --> SUB
+    API --> SUB
 
     style CON fill:#1f6feb,color:#fff
     style W fill:#1f6feb,color:#fff
     style API fill:#1f6feb,color:#fff
 ```
+
+Tres ejecutables sobre una misma librería. El bus y la cola de trabajo cumplen papeles
+distintos: Kafka reparte lo que la plataforma publica, y SQS es donde espera cada entrega
+pendiente con su reintento programado.
 
 La línea punteada es el redrive automático de SQS; el resto son llamadas del componente.
 
