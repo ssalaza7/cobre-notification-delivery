@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Cobre — Entrega de notificaciones",
-    "description": "Recorrido completo, en orden de ejecucion.\n\nRequiere la infraestructura y los tres servicios corriendo:\n\n    docker compose --profile apps up -d --build\n\nLas peticiones encadenan variables entre si: el token y los identificadores de evento se guardan solos, asi que basta ejecutar la coleccion de arriba abajo.",
+    "description": "Recorrido completo, en orden de ejecucion.\n\nANTES DE EMPEZAR\n1. Abre https://webhook.site y copia la URL que te asigna.\n2. Pegala en la variable webhook_url de la coleccion.\n3. Levanta el entorno:  docker compose --profile apps up -d --build\n\nLas notificaciones apareceran en esa pestana del navegador, con su firma y su numero de intento.\n\nLas peticiones encadenan variables entre si, asi que basta ejecutar la coleccion de arriba abajo. Entre la carpeta 3 y la 4 conviene esperar unos quince segundos, el tiempo que tarda el ciclo de reintentos en agotarse.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -27,7 +27,7 @@
     },
     {
       "key": "webhook_url",
-      "value": "http://localhost:9090/webhooks/CLIENT002"
+      "value": "https://webhook.site/PEGA-AQUI-TU-UUID"
     },
     {
       "key": "token",
@@ -131,7 +131,7 @@
                 "subscriptions"
               ]
             },
-            "description": "El cliente registra el destino de sus notificaciones con su propio token.\n\nLa respuesta trae el signing_secret, y es la UNICA vez que viaja: con el se verifica la cabecera X-Cobre-Signature de cada notificacion. Repetir esta peticion con otra URL actualiza el destino y CONSERVA el secreto.\n\nOmitir event_type registra el comodin, que cubre todos los tipos.",
+            "description": "El cliente registra el destino de sus notificaciones con su propio token.\n\nPega en la variable webhook_url la direccion que te dio webhook.site.\n\nLa respuesta trae el signing_secret, y es la UNICA vez que viaja: con el se verifica la cabecera X-Cobre-Signature de cada notificacion. Repetir esta peticion con otra URL actualiza el destino y CONSERVA el secreto.\n\nOmitir event_type registra el comodin, que cubre todos los tipos.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"webhook_url\": \"{{webhook_url}}\"\n}"

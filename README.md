@@ -342,14 +342,16 @@ Requisitos: Docker y Java 21. No es necesario instalar Gradle.
 
 Puertos: la API en 8080, el worker en 8081 y el consumidor en 8083.
 
+El destino de las notificaciones se registra por la API. Para verlas llegar en vivo, la vía
+más simple es [webhook.site](https://webhook.site): abrir la página, copiar la URL que asigna y
+registrarla con `POST /subscriptions`.
+
 ### Todo en contenedores
 
 ```bash
 cp .env.example .env
 openssl rand -base64 48          # asignar el resultado a JWT_SECRET
 set -a; source .env; set +a
-
-python3 scripts/webhook-receiver.py &   # hace de cliente, corre en la máquina
 
 docker compose --profile apps up -d --build
 ```
@@ -373,9 +375,6 @@ set -a; source .env; set +a
 
 # 2. PostgreSQL, Kafka (Redpanda) y SQS (ElasticMQ)
 docker compose up -d
-
-# 3. Receptor de webhooks de prueba: simula el sistema del cliente y verifica la firma
-python3 scripts/webhook-receiver.py
 
 # 4. Los tres ejecutables, en terminales separadas
 SPRING_PROFILES_ACTIVE=local java -jar cobre-notificacion-api-service/build/libs/cobre-notificacion-api-service-0.0.1-SNAPSHOT.jar

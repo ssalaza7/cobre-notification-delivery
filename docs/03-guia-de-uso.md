@@ -172,27 +172,34 @@ validar es del cliente. Para ver la verificación en pantalla está el receptor 
 
 ---
 
-## Receptor de pruebas
+## Simular un destino que falla
 
-`scripts/webhook-receiver.py` cumple el papel del cliente: recibe la notificación, verifica la
-firma y responde. No forma parte del sistema; simula el sistema receptor, que es quien
-determina si acepta o rechaza la entrega.
+Para demostrar los reintentos hace falta un destino que rechace la entrega. webhook.site
+permite fijar el codigo de respuesta al crear el endpoint:
 
-Para demostrar los distintos comportamientos —entrega correcta, reintentos, fallo definitivo,
-timeout— sin reiniciar el receptor entre uno y otro, el receptor determina su respuesta a
-partir del identificador del evento. Con una única instancia en ejecución, el escenario se
-selecciona en el momento de publicar:
+```bash
+curl -X POST https://webhook.site/token \
+  -H 'Content-Type: application/json' \
+  -d '{"default_status":503}'
+```
 
-| Identificador publicado | Respuesta del receptor | Comportamiento demostrado |
-|---|---|---|
-| `EVT-DEMO-1` | 200 | Entrega correcta en el primer intento |
-| `EVT-RECUPERA-1` | 503 y después 200 | Entrega recuperada por el backoff |
-| `EVT-FALLA-1` | 503 siempre | Reintentos agotados: estado `failed` y derivación a la DLQ |
-| `EVT-RECHAZA-1` | 400 | Fallo permanente: no se reintenta |
-| `EVT-LENTO-1` | sin respuesta a tiempo | Timeout del destino |
+Registrando ese destino en un cliente y el normal en otro, la demostracion muestra los dos
+comportamientos a la vez sin tocar nada a mitad:
 
-Es una convención del receptor de pruebas, no del servicio. El servicio procesa todos los
-eventos de forma idéntica.
+```
+CLIENT002 -> destino que responde 200   entrega a la primera
+CLIENT001 -> destino que responde 503   reintenta con backoff y termina en failed
+```
+
+Los intentos se ven llegar en la pantalla de webhook.site con su numero y su hora:
+
+```
+intento 1 · 01:57:21
+intento 2 · 01:57:25      +4 s
+intento 3 · 01:57:31      +6 s
+```
+
+Las esperas crecientes y no redondas son el backoff exponencial con jitter.
 
 ---
 
