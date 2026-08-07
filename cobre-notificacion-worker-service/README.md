@@ -23,23 +23,16 @@ No expone API de negocio. El servidor existe para las sondas y las métricas.
 
 ## Cómo lee de la cola
 
-SQS no empuja: el worker pide hasta 10 mensajes y la llamada espera hasta 20 segundos si no
-hay nada. Es *long polling* — evita miles de llamadas vacías sin perder inmediatez.
-
-El mensaje se borra **después** de procesar. Borrar es confirmar: si el proceso muere a mitad,
-el mensaje reaparece al vencer el *visibility timeout* y la notificación no se pierde.
-
-El mensaje solo transporta el identificador. El estado se relee de la base en cada intento,
-porque entre el encolado y la entrega pueden pasar minutos y el estado pudo cambiar.
+*Long polling*: pide hasta 10 mensajes y la llamada espera hasta 20 segundos. El mensaje se
+borra después de procesar, y solo transporta el identificador: el estado se relee de la base en
+cada intento.
 
 ## Reintentos
 
 Escalones: **5s · 30s · 2m · 10m · 15m**. El último coincide con el máximo que admite
 `DelaySeconds` en SQS.
 
-Cada espera lleva un componente aleatorio de hasta el 20 %. Sin él, todas las notificaciones
-acumuladas durante la caída de un destino reintentarían en el mismo instante y volverían a
-tumbarlo.
+Cada espera lleva un componente aleatorio de hasta el 20 %.
 
 | Respuesta del destino | Qué hace |
 |---|---|
@@ -59,7 +52,7 @@ forma parte del contenido firmado, de modo que el receptor puede rechazar la rep
 una captura antigua.
 
 Antes de llamar, la URL se valida: fuera del perfil `local` se exige HTTPS y se rechazan las
-direcciones que resuelvan a la red interna. Sin eso el servicio sería un proxy hacia la VPC.
+direcciones que resuelvan a la red interna.
 
 ## Configuración
 
@@ -93,12 +86,10 @@ SPRING_PROFILES_ACTIVE=local java -jar \
   cobre-notificacion-worker-service/build/libs/cobre-notificacion-worker-service-0.0.1-SNAPSHOT.jar
 ```
 
-## Por qué es reactivo
-
-Es el módulo que lo justifica: cada entrega espera la respuesta de un tercero que puede tardar
-segundos o no contestar. Con un hilo por entrega, mil destinos lentos serían mil hilos
-bloqueados.
-
 ## Dependencia propia
 
 El cliente HTTP reactivo. No incluye Kafka ni Spring Security.
+
+---
+
+Las decisiones de diseño y sus alternativas están en el [documento de diseño](../docs/01-diseno-del-sistema.md).

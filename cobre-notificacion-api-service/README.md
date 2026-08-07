@@ -23,44 +23,27 @@ Puerto 8080.
 
 ## Autorización
 
-El `client_id` sale siempre del token, nunca de la ruta ni de la query. No existe ningún
-parámetro que permita expresar una consulta sobre los datos de otro cliente, y `EventQuery`
-exige el tenant en su constructor: la petición insegura no se puede construir.
-
-Un recurso ajeno responde **404, no 403**. Un 403 confirmaría que el recurso existe y
-convertiría la API en un oráculo para enumerar identificadores.
-
-Consultar y reenviar son scopes distintos: un panel de solo lectura no puede disparar reenvíos.
+El `client_id` sale siempre del token. Un recurso ajeno responde **404**. Consultar, reenviar y
+administrar suscripciones son scopes distintos.
 
 ## Tokens
 
 Flujo `client_credentials` de OAuth2. Acepta el cuerpo como formulario —la forma del RFC 6749—
 y también como JSON.
 
-Es el único endpoint público y el más expuesto a fuerza bruta. Sus defensas: secreto guardado
-solo como hash bcrypt, un único mensaje de error para todos los modos de fallo, verificación en
-vacío cuando el cliente no existe para igualar tiempos, límite por dirección de origen y
-vigencia de una hora.
-
-El log de acceso enmascara los parámetros sensibles antes de escribir la línea, por si una
-integración manda un secreto por la URL.
+Defensas: secreto en hash bcrypt, un único mensaje de error para todos los fallos, tiempo de
+respuesta constante, límite por dirección de origen y vigencia de una hora. El log de acceso
+enmascara los parámetros sensibles.
 
 ## Reenvío
 
-Responde **202 y no 200**: la solicitud queda encolada, no entregada. Si la API entregara en
-línea, la petición quedaría atada al tiempo de respuesta del webhook del cliente y perdería los
-reintentos, la DLQ y la bitácora.
-
-Solo se reenvía lo que está en `failed`; cualquier otro estado devuelve 409. El reenvío usa
-bloqueo optimista, de modo que dos peticiones simultáneas encolan una sola vez.
-
-La bitácora es de solo adición: el reenvío conserva los intentos del ciclo anterior.
+Responde **202**: la solicitud queda encolada. Solo se reenvía lo que está en `failed`;
+cualquier otro estado devuelve 409. Con bloqueo optimista, dos peticiones simultáneas encolan
+una sola vez. La bitácora es de solo adición.
 
 ## Métricas de backlog
 
-Este módulo hospeda el refrescador que publica el conteo de eventos por estado. Es observación
-pura y vive aquí, no en el worker, para que una consulta periódica de conteo no compita por
-capacidad con la entrega.
+Publica el conteo de eventos por estado como gauge de Micrometer.
 
 ## Configuración
 
@@ -87,3 +70,7 @@ SPRING_PROFILES_ACTIVE=local java -jar \
 ## Dependencia propia
 
 Spring Security y el resource server JWT. No incluye Kafka ni el cliente de webhooks.
+
+---
+
+Las decisiones de diseño y sus alternativas están en el [documento de diseño](../docs/01-diseno-del-sistema.md).

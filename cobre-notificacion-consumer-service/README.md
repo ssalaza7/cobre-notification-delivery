@@ -23,22 +23,17 @@ métricas. No sirve tráfico de negocio.
 
 ## Cómo lee del bus
 
-Kafka no empuja mensajes: el consumidor mantiene una petición abierta y el broker responde en
-cuanto hay datos. El offset se confirma **después** de persistir y encolar, nunca al recibir.
+Kafka es *pull*: el consumidor mantiene una petición abierta y el broker responde en cuanto hay
+datos. El offset se confirma después de persistir y encolar.
 
 ## Manejo de fallos
 
-La distinción es deliberada y corrige un defecto que perdía eventos en silencio:
-
 | Situación | Qué hace |
 |---|---|
-| Mensaje que no se puede deserializar | Confirma el offset y lo descarta. Reintentarlo bloquearía la partición sin posibilidad de éxito |
-| Fallo de la base o de la cola | **No** confirma el offset. Kafka reentrega |
+| Mensaje que no se puede deserializar | Confirma el offset y lo descarta |
+| Fallo de la base o de la cola | No confirma el offset. Kafka reentrega |
 
-La reentrega por sí sola no basta: si la fila ya se escribió en el intento anterior,
-`insertIfAbsent` devuelve `false`. Por eso, cuando el evento sigue en `PENDING` —persistido
-pero sin mensaje en cola— se reencola. Solo en `PENDING`: en `RETRYING` ya hay un mensaje
-esperando con su retardo, y reencolarlo produciría un intento de más.
+Si el evento ya existe y sigue en `PENDING` —persistido pero sin mensaje en cola— se reencola.
 
 ## Configuración
 
@@ -52,8 +47,7 @@ cobre:
     delivery-queue-url: ${SQS_DELIVERY_QUEUE:...}
 ```
 
-Un solo `group-id` para todas las réplicas: se reparten las particiones en lugar de procesar
-cada una el mismo evento.
+Un solo `group-id` para todas las réplicas.
 
 ## Ejecución
 
@@ -66,6 +60,8 @@ SPRING_PROFILES_ACTIVE=local java -jar \
 
 ## Dependencia propia
 
-`reactor-kafka`, con `kafka-clients` fijado a 3.9.1. Boot 4 trae la 4.x, que elimina
-constructores contra los que `reactor-kafka` está compilado. La fijación vive solo en este
-módulo: los otros dos no cargan Kafka.
+`reactor-kafka`, con `kafka-clients` fijado a 3.9.1.
+
+---
+
+Las decisiones de diseño y sus alternativas están en el [documento de diseño](../docs/01-diseno-del-sistema.md).

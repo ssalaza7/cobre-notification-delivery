@@ -14,10 +14,8 @@ infrastructure/             adaptadores que implementan esos contratos
 **`domain`** — qué es una notificación, en qué estados puede estar y qué transiciones son
 válidas: `NotificationEvent`, `DeliveryStatus`, `RetryPolicy`, `Subscription`.
 
-Está aquí porque los tres servicios operan sobre las mismas tablas y la misma máquina de
-estados. La api consulta `isReplayable()` para responder 409, y el worker respeta esa misma
-regla al cerrar el estado. Duplicarlo en cada servicio no daría independencia: daría dos
-definiciones de la misma regla, listas para divergir.
+Se comparte porque los tres servicios operan sobre las mismas tablas y la misma máquina de
+estados.
 
 **`application/port`** — las interfaces que el dominio necesita del exterior:
 `NotificationEventRepositoryPort`, `DeliveryQueuePort`, `MetricsPort`. Son contratos, no
@@ -38,15 +36,11 @@ DominioSinFrameworkTest
 Lee los fuentes de `domain` y de `application/port` y **falla el build** si encuentra un import
 de Spring, R2DBC, Kafka, Micrometer, el SDK de AWS o Jackson.
 
-Existe porque el dominio comparte módulo con los adaptadores, así que esas librerías están en
-su classpath y el compilador ya no lo impide por sí solo. Reactor queda fuera de la lista a
-propósito: es una librería de composición asíncrona, no un framework — no impone contenedor,
-ciclo de vida ni configuración.
+Reactor queda fuera de la lista: es una librería de composición asíncrona, no un framework.
 
-## Qué entra aquí y qué no
+## Qué entra aquí
 
-Entra lo que necesitan **al menos dos** servicios. Cada dependencia añadida la cargan los tres
-jars aunque dos no la usen.
+Lo que necesitan **al menos dos** servicios.
 
 | En el kit | Por qué |
 |---|---|
@@ -54,14 +48,15 @@ jars aunque dos no la usen.
 | Adaptador SQS | El consumer encola, el worker reencola, la api encola reenvíos |
 | Micrometer, MDC, enmascarado | Los tres publican métricas y escriben logs |
 
-Fuera quedaron, por la misma regla: Kafka (solo el consumer), el cliente HTTP y la firma HMAC
-(solo el worker), Spring Security (solo la api).
-
-Si mañana un servicio necesita algo que el kit no soporta —otra implementación de
-persistencia, por ejemplo— la trae él, sin cambiar el kit.
+Fuera quedan Kafka (solo el consumer), el cliente HTTP y la firma HMAC (solo el worker) y
+Spring Security (solo la api).
 
 ## Migraciones
 
 Las migraciones de Flyway viven en `src/main/resources/db/migration` y viajan con la librería,
 de modo que cualquiera de los tres servicios puede aplicarlas al arrancar. Las credenciales de
 demostración están aparte, en `db/demo`, y solo las cargan los perfiles `local` y `demo`.
+
+---
+
+Las decisiones de diseño y sus alternativas están en el [documento de diseño](../docs/01-diseno-del-sistema.md).
