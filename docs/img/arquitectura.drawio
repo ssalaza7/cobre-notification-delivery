@@ -40,111 +40,49 @@
         <mxCell id="hook" value="Webhook del cliente" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f6f8fa;strokeColor=#8c959f;fontSize=14;" vertex="1" parent="1">
           <mxGeometry x="1660" y="880" width="260" height="80" as="geometry" />
         </mxCell>
-        <mxCell id="a1" value="publica" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=12;jumpStyle=arc;jumpSize=10;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="svcExt" target="kafka">
+        <mxCell id="a1" value="publica" style="edgeStyle=none;rounded=0;html=1;fontSize=12;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="svcExt" target="kafka">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="a2" value="sondea" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=12;jumpStyle=arc;jumpSize=10;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.25;entryDx=0;entryDy=0;" edge="1" parent="1" source="consumer" target="kafka">
-          <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="420" y="120" />
-              <mxPoint x="420" y="302" />
-            </Array>
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="a3" value="consulta y reenvía" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=12;jumpStyle=arc;jumpSize=10;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="usr" target="api">
-          <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="420" y="560" />
-              <mxPoint x="420" y="520" />
-            </Array>
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="a4" value="pide el token" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=12;jumpStyle=arc;jumpSize=10;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="api" target="idp">
-          <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="650" y="430" />
-              <mxPoint x="1520" y="430" />
-              <mxPoint x="1520" y="340" />
-            </Array>
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="a5" value="POST firmado HMAC" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=12;jumpStyle=arc;jumpSize=10;exitX=1;exitY=0.85;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="worker" target="hook">
-          <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="980" y="948" />
-              <mxPoint x="980" y="1040" />
-              <mxPoint x="1580" y="1040" />
-              <mxPoint x="1580" y="920" />
-            </Array>
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="a6" value="encola" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=12;jumpStyle=arc;jumpSize=10;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="consumer" target="sqs">
+        <mxCell id="a2" value="sondea" style="edgeStyle=none;rounded=0;html=1;fontSize=12;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.25;entryDx=0;entryDy=0;" edge="1" parent="1" source="consumer" target="kafka">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="a7" value="persiste" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=12;jumpStyle=arc;jumpSize=10;exitX=1;exitY=0.85;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="consumer" target="eventos">
-          <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="900" y="148" />
-              <mxPoint x="900" y="605" />
-            </Array>
-          </mxGeometry>
+        <mxCell id="a3" value="consulta y reenvía" style="edgeStyle=none;rounded=0;html=1;fontSize=12;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="usr" target="api">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="a8" value="encola el reenvío" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=12;jumpStyle=arc;jumpSize=10;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.75;entryDx=0;entryDy=0;" edge="1" parent="1" source="api" target="sqs">
-          <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="960" y="500" />
-              <mxPoint x="960" y="148" />
-            </Array>
-          </mxGeometry>
+        <mxCell id="a4" value="pide el token" style="edgeStyle=none;rounded=0;html=1;fontSize=12;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="api" target="idp">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="a9" value="consulta" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=12;jumpStyle=arc;jumpSize=10;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;" edge="1" parent="1" source="api" target="eventos">
-          <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="1020" y="520" />
-              <mxPoint x="1020" y="583" />
-            </Array>
-          </mxGeometry>
+        <mxCell id="a5" value="POST firmado HMAC" style="edgeStyle=none;rounded=0;html=1;fontSize=12;exitX=1;exitY=0.85;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="worker" target="hook">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="a10" value="administra" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=12;jumpStyle=arc;jumpSize=10;exitX=1;exitY=0.85;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;" edge="1" parent="1" source="api" target="subs">
-          <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="940" y="548" />
-              <mxPoint x="940" y="883" />
-            </Array>
-          </mxGeometry>
+        <mxCell id="a6" value="encola" style="edgeStyle=none;rounded=0;html=1;fontSize=12;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="consumer" target="sqs">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="a11" value="sondea y reencola reintentos" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=12;jumpStyle=arc;jumpSize=10;exitX=1;exitY=0.15;exitDx=0;exitDy=0;entryX=1;entryY=0.25;entryDx=0;entryDy=0;" edge="1" parent="1" source="worker" target="sqs">
-          <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="1440" y="892" />
-              <mxPoint x="1440" y="103" />
-            </Array>
-          </mxGeometry>
+        <mxCell id="a7" value="persiste" style="edgeStyle=none;rounded=0;html=1;fontSize=12;exitX=1;exitY=0.85;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="consumer" target="eventos">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="a12" value="reintentos agotados" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=12;jumpStyle=arc;jumpSize=10;exitX=1;exitY=0.35;exitDx=0;exitDy=0;entryX=1;entryY=0.75;entryDx=0;entryDy=0;" edge="1" parent="1" source="worker" target="dlq">
-          <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="1500" y="908" />
-              <mxPoint x="1500" y="368" />
-            </Array>
-          </mxGeometry>
+        <mxCell id="a8" value="encola el reenvío" style="edgeStyle=none;rounded=0;html=1;fontSize=12;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.75;entryDx=0;entryDy=0;" edge="1" parent="1" source="api" target="sqs">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="a13" value="estado e intento" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=12;jumpStyle=arc;jumpSize=10;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0;entryY=0.85;entryDx=0;entryDy=0;" edge="1" parent="1" source="worker" target="eventos">
-          <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="750" y="637" />
-            </Array>
-          </mxGeometry>
+        <mxCell id="a9" value="consulta" style="edgeStyle=none;rounded=0;html=1;fontSize=12;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;" edge="1" parent="1" source="api" target="eventos">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="a14" value="resuelve destino" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=12;jumpStyle=arc;jumpSize=10;exitX=1;exitY=0.6;exitDx=0;exitDy=0;entryX=0;entryY=0.75;entryDx=0;entryDy=0;" edge="1" parent="1" source="worker" target="subs">
-          <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="1000" y="928" />
-              <mxPoint x="1000" y="928" />
-            </Array>
-          </mxGeometry>
+        <mxCell id="a10" value="administra" style="edgeStyle=none;rounded=0;html=1;fontSize=12;exitX=1;exitY=0.85;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;" edge="1" parent="1" source="api" target="subs">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="a15" value="redrive automático" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=12;jumpStyle=arc;jumpSize=10;dashed=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="sqs" target="dlq">
+        <mxCell id="a11" value="sondea y reencola reintentos" style="edgeStyle=none;rounded=0;html=1;fontSize=12;exitX=1;exitY=0.15;exitDx=0;exitDy=0;entryX=1;entryY=0.25;entryDx=0;entryDy=0;" edge="1" parent="1" source="worker" target="sqs">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a12" value="reintentos agotados" style="edgeStyle=none;rounded=0;html=1;fontSize=12;exitX=1;exitY=0.35;exitDx=0;exitDy=0;entryX=1;entryY=0.75;entryDx=0;entryDy=0;" edge="1" parent="1" source="worker" target="dlq">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a13" value="estado e intento" style="edgeStyle=none;rounded=0;html=1;fontSize=12;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0;entryY=0.85;entryDx=0;entryDy=0;" edge="1" parent="1" source="worker" target="eventos">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a14" value="resuelve destino" style="edgeStyle=none;rounded=0;html=1;fontSize=12;exitX=1;exitY=0.6;exitDx=0;exitDy=0;entryX=0;entryY=0.75;entryDx=0;entryDy=0;" edge="1" parent="1" source="worker" target="subs">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a15" value="redrive automático" style="edgeStyle=none;rounded=0;html=1;fontSize=12;dashed=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="sqs" target="dlq">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
       </root>
