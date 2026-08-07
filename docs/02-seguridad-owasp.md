@@ -37,7 +37,8 @@ el objeto.
    ```
 4. **Un recurso ajeno responde 404, no 403.** Un 403 confirmaría la existencia del recurso y
    convertiría la API en un oráculo de enumeración.
-5. **Scopes separados** para consulta y reenvío.
+5. **Scopes separados** para consulta, reenvío y administración de suscripciones. Quien solo
+   consulta no puede redirigir a dónde se entregan las notificaciones (`subscriptions:manage`).
 
 Verificado: `EVT005` (de `CLIENT003`) con token de `CLIENT002` devuelve 404; `EVT003` devuelve
 200.
@@ -136,9 +137,11 @@ datos, y el servicio ejecutaría esa petición desde dentro de la red con su pro
    válido puede responder `302 → http://169.254.169.254/...` y evadir toda la validación
    anterior. Un 3xx se trata como fallo permanente.
 4. **La resolución DNS corre en `boundedElastic`**, por ser bloqueante.
-5. **Defensa en profundidad en AWS**: IMDSv2 obligatorio, egreso solo por NAT Gateway y grupos
+5. **Se valida en dos momentos**: al registrar la suscripción, para rechazar de entrada un
+   destino inaceptable, y al entregar, porque entre uno y otro el DNS puede cambiar.
+6. **Defensa en profundidad en AWS**: IMDSv2 obligatorio, egreso solo por NAT Gateway y grupos
    de seguridad restrictivos.
-6. **Cuerpo de respuesta acotado**, para que un destino malicioso no agote la memoria.
+7. **Cuerpo de respuesta acotado**, para que un destino malicioso no agote la memoria.
 
 ### Limitación: es una denylist, no una allowlist
 

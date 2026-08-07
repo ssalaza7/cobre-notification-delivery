@@ -18,7 +18,17 @@ perderse cuando el destino falla, y dejando registro suficiente para responder u
 con datos.
 
 Son dos capacidades sobre un mismo modelo: **entrega** (consumir, verificar suscripción,
-entregar, reintentar, registrar) y **self-service** (consultar, ver detalle, reenviar).
+entregar, reintentar, registrar) y **self-service** (registrar el webhook, consultar, ver
+detalle, reenviar).
+
+```
+POST /oauth/token                      emisión de token
+POST /subscriptions                    registra el webhook y devuelve su secreto de firma
+GET  /subscriptions                    las suscripciones del cliente
+GET  /notification_events              listado con filtros y paginación
+GET  /notification_events/{id}         detalle con la bitácora de cada intento
+POST /notification_events/{id}/replay  reenvío de una entrega fallida
+```
 
 ---
 
@@ -168,8 +178,10 @@ flowchart LR
 
 Las dependencias apuntan siempre hacia el interior. `domain` y `application` no importan
 ninguna clase de Spring; el cableado reside en la clase de configuración de cada ejecutable.
-La consecuencia verificable es que las pruebas del dominio y los casos de uso se ejecutan sin
-contexto de Spring, sin base de datos y sin broker.
+La regla la verifica `DominioSinFrameworkTest`, que lee los fuentes del dominio y de los puertos
+y falla el build si aparece un import de Spring, R2DBC, Kafka, Micrometer, el SDK de AWS o
+Jackson. La consecuencia práctica es que sus pruebas se ejecutan sin contexto de Spring, sin
+base de datos y sin broker.
 
 **Regla que sostiene el aislamiento entre clientes:** `EventQuery` exige `clientId` en su
 constructor, de modo que no existe forma de construir una consulta sin acotar por tenant. El
