@@ -1,5 +1,6 @@
 package com.cobre.notifications.infrastructure.adapter.out.webhook;
 
+import com.cobre.notifications.application.port.out.WebhookUrlPolicyPort;
 import com.cobre.notifications.domain.exception.InvalidWebhookUrlException;
 import com.cobre.notifications.infrastructure.config.WebhookProperties;
 import org.springframework.stereotype.Component;
@@ -22,7 +23,7 @@ import java.util.Locale;
  * event loop de Netty.
  */
 @Component
-public class WebhookUrlValidator {
+public class WebhookUrlValidator implements WebhookUrlPolicyPort {
 
     private final WebhookProperties properties;
 
@@ -30,11 +31,20 @@ public class WebhookUrlValidator {
         this.properties = properties;
     }
 
+    /** @throws InvalidWebhookUrlException si el destino no es aceptable */
+    @Override
+    public void validate(String url) {
+        validated(url);
+    }
+
     /**
+     * Igual que {@link #validate(String)}, pero devuelve la URI ya analizada, que es lo
+     * que necesita el adaptador de entrega para no volver a interpretarla.
+     *
      * @return la URI validada
      * @throws InvalidWebhookUrlException si el destino no es aceptable
      */
-    public URI validate(String url) {
+    public URI validated(String url) {
         URI uri = parse(url);
         requireAllowedScheme(uri);
         String host = requireHost(uri);

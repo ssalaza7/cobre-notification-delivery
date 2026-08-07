@@ -12,9 +12,9 @@
 -- consultar y reenviar son autorizaciones distintas.
 INSERT INTO api_credential (client_id, secret_hash, scopes) VALUES
     ('CLIENT001', crypt('demo-secret-client001', gen_salt('bf', 10)),
-     'notifications:read notifications:replay notifications:monitor'),
+     'notifications:read notifications:replay notifications:monitor subscriptions:manage'),
     ('CLIENT002', crypt('demo-secret-client002', gen_salt('bf', 10)),
-     'notifications:read notifications:replay notifications:monitor'),
+     'notifications:read notifications:replay notifications:monitor subscriptions:manage'),
     ('CLIENT003', crypt('demo-secret-client003', gen_salt('bf', 10)),
      'notifications:read')
 ON CONFLICT (client_id) DO NOTHING;

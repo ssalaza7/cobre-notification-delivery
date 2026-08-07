@@ -14,50 +14,63 @@ los escenarios de entrega; este documento cubre su manejo.
 
 ## Registro de webhooks
 
-```bash
-./scripts/register-webhook.sh CLIENT001 https://mi-sistema.com/webhooks
-```
-
-```
-Webhook registrado.
-  cliente : CLIENT001
-  eventos : *
-  destino : https://mi-sistema.com/webhooks
-
-  Secreto de firma (se muestra una sola vez):
-    whsec_H6foh8fFGCR1AAVdbUFvo2J3KAzFjHDFGCF6Dmcq
-```
-
-El secreto de firma se muestra únicamente en el momento del alta. Con él, el cliente verifica
-la cabecera `X-Cobre-Signature` de cada notificación y confirma que el mensaje procede del
-servicio y no de un tercero que haya descubierto la URL.
-
-### Consulta, modificación y baja
+El cliente administra los suyos con su propio token, igual que consulta sus notificaciones.
 
 ```bash
-./scripts/register-webhook.sh --list CLIENT001
-./scripts/register-webhook.sh CLIENT001 https://nuevo-dominio.com/hooks   # cambia el destino
-./scripts/register-webhook.sh --off CLIENT001 '*'
+curl -X POST http://localhost:8080/subscriptions \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"webhook_url":"https://mi-sistema.com/hooks","event_type":"credit_transfer"}'
 ```
 
-La modificación de la URL no rota el secreto de firma: hacerlo invalidaría la verificación en
-el cliente sin previo aviso. La baja desactiva la suscripción en lugar de eliminar la fila,
-porque la bitácora de entregas anteriores hace referencia a ella.
+```json
+{
+  "event_type": "credit_transfer",
+  "webhook_url": "https://mi-sistema.com/hooks",
+  "active": true,
+  "signing_secret": "whsec_6FWOoTBmTn2yKCoRCR1eaOOtEPI9hrWQqFeYTwe4SP4"
+}
+```
 
-Los cambios surten efecto a partir de la siguiente notificación; no requieren reinicio.
+El `signing_secret` viaja **solo en esta respuesta**. Con él el cliente verifica la cabecera
+`X-Cobre-Signature` de cada notificación. En el listado no aparece: devolverlo en cada consulta
+lo expondría en cada log, caché y captura de pantalla.
+
+El `client_id` sale del token y nunca del cuerpo. Si viniera en el cuerpo, cualquiera podría
+registrar un webhook a nombre de otro y desviarse sus notificaciones.
+
+### Consulta y baja
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/subscriptions
+
+curl -X DELETE -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8080/subscriptions/credit_transfer
+```
+
+La baja responde 204 y desactiva la suscripción en lugar de borrarla, porque la bitácora de
+entregas anteriores hace referencia a ella. Dar de baja algo inexistente responde 404.
+
+### Actualizar el destino
+
+El mismo `POST` con otra URL. **El secreto de firma no cambia**: rotarlo en cada cambio de URL
+invalidaría la verificación en el cliente sin previo aviso.
 
 ### Un destino por tipo de evento
 
-El esquema admite una suscripción por `event_type`, más un comodín `*` que cubre el resto.
-Permite que un cliente dirija cada tipo de evento a un sistema distinto:
+Omitir `event_type` registra el comodín `*`, que cubre todo lo que no tenga suscripción
+específica. Al resolver el destino, el tipo concreto tiene prioridad sobre el comodín.
 
 ```bash
-./scripts/register-webhook.sh CLIENT001 https://pagos.mi-sistema.com/hooks   credit_transfer
-./scripts/register-webhook.sh CLIENT001 https://alertas.mi-sistema.com/hooks balance_updated
+# transferencias a un sistema, alertas de saldo a otro
+-d '{"webhook_url":"https://pagos.mi-sistema.com/hooks","event_type":"credit_transfer"}'
+-d '{"webhook_url":"https://alertas.mi-sistema.com/hooks","event_type":"balance_updated"}'
 ```
 
-En la resolución del destino, la suscripción de tipo específico tiene prioridad sobre el
-comodín.
+### Permiso
+
+Administrar suscripciones exige el scope `subscriptions:manage`, distinto del de lectura: quien
+solo consulta no debe poder redirigir a dónde se entregan las notificaciones. `CLIENT003` no lo
+tiene, y recibe 403.
 
 ### Redirección global por variable de entorno
 
@@ -66,23 +79,19 @@ WEBHOOK_OVERRIDE_URL=https://el-destino/webhook \
 java -jar cobre-notificacion-worker-service/build/libs/cobre-notificacion-worker-service-0.0.1-SNAPSHOT.jar
 ```
 
-Tiene precedencia sobre las suscripciones almacenadas. Está previsto para escenarios en los
-que la URL de destino se conoce en el momento de la ejecución.
+Tiene precedencia sobre las suscripciones almacenadas. Está previsto para escenarios en los que
+la URL de destino se conoce en el momento de la ejecución.
 
 ### Validación del destino
 
 Fuera del perfil `local`, la validación opera en modo estricto: exige HTTPS y rechaza los
 destinos que resuelvan a direcciones de red interna (`169.254.169.254`, rangos privados,
-loopback).
+loopback). Se aplica dos veces —al registrar y al entregar— porque entre una y otra el DNS
+puede cambiar.
 
-Sin esta validación el servicio actuaría como proxy: un cliente podría registrar una URL
-interna y obtener que el servicio realizara esa petición desde dentro de la red. Es la
-vulnerabilidad SSRF, especialmente relevante aquí porque la URL de destino la define el
-cliente.
-
-Comportamiento verificado contra un endpoint HTTPS público (`postman-echo.com`): entrega
-completada en un intento. El mismo destino sobre `http://` produce estado `failed` en un solo
-intento, con el mensaje *"El webhook debe usar HTTPS"*.
+Sin esta validación el servicio actuaría como proxy: un cliente podría registrar una URL interna
+y obtener que el servicio realizara esa petición desde dentro de la red. Es la vulnerabilidad
+SSRF, especialmente relevante aquí porque la URL de destino la define el cliente.
 
 ---
 

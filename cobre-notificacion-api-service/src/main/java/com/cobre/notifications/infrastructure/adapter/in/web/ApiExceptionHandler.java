@@ -5,6 +5,7 @@ import com.cobre.notifications.domain.exception.InvalidNotificationEventExceptio
 import com.cobre.notifications.domain.exception.InvalidQueryException;
 import com.cobre.notifications.domain.exception.NotificationEventNotFoundException;
 import com.cobre.notifications.domain.exception.ReplayNotAllowedException;
+import com.cobre.notifications.domain.exception.SubscriptionNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -50,6 +51,11 @@ public class ApiExceptionHandler {
     @ExceptionHandler(InvalidClientCredentialsException.class)
     public ProblemDetail handleInvalidCredentials(InvalidClientCredentialsException e) {
         return problem(HttpStatus.UNAUTHORIZED, "Credenciales invalidas", e.getMessage(), "invalid-client");
+    }
+
+    @ExceptionHandler(SubscriptionNotFoundException.class)
+    public ProblemDetail handleSubscriptionNotFound(SubscriptionNotFoundException e) {
+        return problem(HttpStatus.NOT_FOUND, "Suscripcion no encontrada", e.getMessage(), "not-found");
     }
 
     @ExceptionHandler(InvalidQueryException.class)

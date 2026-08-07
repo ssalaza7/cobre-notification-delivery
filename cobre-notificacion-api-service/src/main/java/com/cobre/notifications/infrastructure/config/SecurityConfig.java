@@ -51,6 +51,7 @@ public class SecurityConfig {
     private static final String SCOPE_READ = "SCOPE_notifications:read";
     private static final String SCOPE_REPLAY = "SCOPE_notifications:replay";
     private static final String SCOPE_MONITOR = "SCOPE_notifications:monitor";
+    private static final String SCOPE_SUBSCRIPTIONS = "SCOPE_subscriptions:manage";
 
     @Bean
     SecurityWebFilterChain securityWebFilterChain(
@@ -74,6 +75,10 @@ public class SecurityConfig {
                     }
 
                     exchanges.pathMatchers("/actuator/**").hasAuthority(SCOPE_MONITOR)
+                            // Administrar el destino de las notificaciones es un permiso
+                            // aparte de leerlas: quien solo consulta no debe poder
+                            // redirigir a donde se entregan.
+                            .pathMatchers("/subscriptions/**").hasAuthority(SCOPE_SUBSCRIPTIONS)
                             .pathMatchers(HttpMethod.POST, "/notification_events/*/replay")
                                     .hasAuthority(SCOPE_REPLAY)
                             .pathMatchers(HttpMethod.GET, "/notification_events/**")

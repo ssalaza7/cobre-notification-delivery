@@ -71,7 +71,7 @@ public class WebClientWebhookAdapter implements WebhookClientPort {
         LongSupplier elapsed = () -> (System.nanoTime() - startedAt) / 1_000_000;
 
         // La validacion resuelve DNS, que es bloqueante: fuera del event loop de Netty.
-        return Mono.fromCallable(() -> urlValidator.validate(request.targetUrl()))
+        return Mono.fromCallable(() -> urlValidator.validated(request.targetUrl()))
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMap(uri -> send(uri, request, elapsed))
                 .onErrorResume(InvalidWebhookUrlException.class, e -> {

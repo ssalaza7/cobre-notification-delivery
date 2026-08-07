@@ -23,6 +23,13 @@ public record Subscription(
     /** Comodin que representa "suscrito a todos los tipos de evento". */
     public static final String ALL_EVENT_TYPES = "*";
 
+    /** Alta de una suscripcion: nace activa y con su propio secreto de firma. */
+    public static Subscription register(
+            String clientId, String eventType, String webhookUrl, String signingSecret) {
+        return new Subscription(
+                UUID.randomUUID(), clientId, eventType, webhookUrl, signingSecret, true);
+    }
+
     public Subscription {
         Objects.requireNonNull(id, "id es obligatorio");
         requireText(clientId, "clientId");
@@ -37,6 +44,14 @@ public record Subscription(
 
     public boolean deliversTo(String candidateClientId) {
         return active && clientId.equals(candidateClientId);
+    }
+
+    /**
+     * Copia desactivada. No se borra la fila: la bitacora de lo ya entregado apunta a
+     * ella y borrarla dejaria el historial huerfano.
+     */
+    public Subscription deactivated() {
+        return new Subscription(id, clientId, eventType, webhookUrl, signingSecret, false);
     }
 
     /**

@@ -9,6 +9,10 @@ Prueba técnica para Cobre.
 GET  /notification_events              listado con filtros y paginación
 GET  /notification_events/{id}         detalle con la bitácora de cada intento
 POST /notification_events/{id}/replay  reenvío de una entrega fallida
+
+POST   /subscriptions                  registra el webhook y devuelve su secreto de firma
+GET    /subscriptions                  las suscripciones del cliente
+DELETE /subscriptions/{event_type}     da de baja una
 ```
 
 ---

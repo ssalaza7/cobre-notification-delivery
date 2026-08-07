@@ -23,14 +23,14 @@ class WebhookUrlValidatorTest {
     @Test
     @DisplayName("acepta un destino HTTPS publico")
     void acepta_https_publico() {
-        assertThat(validator(true, false).validate("https://cliente.example.com/hooks/1"))
+        assertThat(validator(true, false).validated("https://cliente.example.com/hooks/1"))
                 .hasToString("https://cliente.example.com/hooks/1");
     }
 
     @Test
     @DisplayName("rechaza HTTP cuando se exige HTTPS: el payload viaja firmado pero en claro")
     void rechaza_http_si_exige_https() {
-        assertThatThrownBy(() -> validator(true, false).validate("http://cliente.example.com/hook"))
+        assertThatThrownBy(() -> validator(true, false).validated("http://cliente.example.com/hook"))
                 .isInstanceOf(InvalidWebhookUrlException.class)
                 .hasMessageContaining("HTTPS");
     }
@@ -38,7 +38,7 @@ class WebhookUrlValidatorTest {
     @Test
     @DisplayName("permite HTTP solo cuando la configuracion lo habilita explicitamente")
     void permite_http_en_local() {
-        assertThatCode(() -> validator(false, false).validate("http://localhost:9090/webhooks/CLIENT001"))
+        assertThatCode(() -> validator(false, false).validated("http://localhost:9090/webhooks/CLIENT001"))
                 .doesNotThrowAnyException();
     }
 
@@ -46,14 +46,14 @@ class WebhookUrlValidatorTest {
     @ValueSource(strings = {"ftp://cliente.example.com/hook", "file:///etc/passwd", "gopher://x/1"})
     @DisplayName("rechaza esquemas que no son HTTP ni HTTPS")
     void rechaza_esquemas_no_soportados(String url) {
-        assertThatThrownBy(() -> validator(false, false).validate(url))
+        assertThatThrownBy(() -> validator(false, false).validated(url))
                 .isInstanceOf(InvalidWebhookUrlException.class);
     }
 
     @Test
     @DisplayName("rechaza una URL sin host")
     void rechaza_sin_host() {
-        assertThatThrownBy(() -> validator(false, false).validate("https:///solo-ruta"))
+        assertThatThrownBy(() -> validator(false, false).validated("https:///solo-ruta"))
                 .isInstanceOf(InvalidWebhookUrlException.class)
                 .hasMessageContaining("host");
     }
@@ -68,7 +68,7 @@ class WebhookUrlValidatorTest {
     })
     @DisplayName("rechaza destinos internos: es el vector clasico de SSRF")
     void rechaza_direcciones_internas(String url) {
-        assertThatThrownBy(() -> validator(false, true).validate(url))
+        assertThatThrownBy(() -> validator(false, true).validated(url))
                 .isInstanceOf(InvalidWebhookUrlException.class)
                 .hasMessageContaining("interna");
     }
@@ -77,7 +77,7 @@ class WebhookUrlValidatorTest {
     @DisplayName("rechaza un host que no resuelve en vez de intentar la peticion")
     void rechaza_host_irresoluble() {
         assertThatThrownBy(() -> validator(false, true)
-                .validate("https://host-que-no-existe.invalid/hook"))
+                .validated("https://host-que-no-existe.invalid/hook"))
                 .isInstanceOf(InvalidWebhookUrlException.class)
                 .hasMessageContaining("resolver");
     }
