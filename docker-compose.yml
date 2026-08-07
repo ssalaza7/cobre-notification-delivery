@@ -58,6 +58,8 @@ services:
     container_name: cobre-notifications-elasticmq
     ports:
       - "${SQS_PORT:-9324}:9324"
+      # Interfaz web de ElasticMQ: muestra las colas y su profundidad.
+      - "${SQS_UI_PORT:-9325}:9325"
     volumes:
       - ./observability/elasticmq.conf:/opt/elasticmq.conf:ro
 
@@ -133,6 +135,19 @@ services:
   # las imagenes, asi que no debe estar corriendo mientras se presenta.
   #
   #   docker compose --profile evidencia up -d grafana-renderer
+  # Consola de Kafka: topics, particiones, mensajes y grupos de consumo.
+  kafka-console:
+    image: docker.redpanda.com/redpandadata/console:v2.7.2
+    container_name: cobre-notifications-kafka-console
+    profiles: ["observability"]
+    depends_on:
+      redpanda: {condition: service_healthy}
+    environment:
+      # 29092 es la escucha interna: la externa anuncia localhost y no resuelve aqui.
+      KAFKA_BROKERS: redpanda:29092
+    ports:
+      - "${KAFKA_CONSOLE_PORT:-8085}:8080"
+
   grafana-renderer:
     image: grafana/grafana-image-renderer:3.11.6
     container_name: cobre-notifications-grafana-renderer

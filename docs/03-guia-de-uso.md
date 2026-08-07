@@ -230,7 +230,8 @@ que Prometheus pueda raspar sus métricas.
 |---|---|
 | Grafana — el tablero se aprovisiona automáticamente | http://localhost:3000 |
 | Kibana — las vistas se cargan con `./scripts/kibana-import.sh` | http://localhost:5601 |
-| SQS — cola de entrega y DLQ | http://localhost:9324 |
+| Kafka — el topic, sus mensajes y el grupo de consumo | http://localhost:8085 |
+| SQS — la cola de entrega y la DLQ, con su profundidad | http://localhost:9325 |
 | Prometheus — métricas en crudo | http://localhost:9091 |
 
 Las vistas de Kibana están versionadas en

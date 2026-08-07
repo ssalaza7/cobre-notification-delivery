@@ -357,7 +357,8 @@ npx newman run postman/cobre-notification-delivery.postman_collection.json
 | **Grafana** | http://localhost:3000 | Entregas, reintentos, latencia, clientes fallando |
 | **Kibana** | http://localhost:5601 | La traza de cada notificación. Vistas: `./scripts/kibana-import.sh` |
 | **Prometheus** | http://localhost:9091 | Las métricas en crudo |
-| **SQS** | http://localhost:9324 | La cola de entrega y la DLQ |
+| **Kafka** | http://localhost:8085 | El topic, sus mensajes y el grupo de consumo |
+| **SQS** | http://localhost:9325 | La cola de entrega y la DLQ, con su profundidad |
 
 ### Apagar
 
@@ -370,6 +371,7 @@ Añadiendo `-v` borra también los datos de PostgreSQL.
 ### Puertos
 
 API 8080 · worker 8081 · consumer 8083 · Grafana 3000 · Kibana 5601 · Prometheus 9091
+Kafka 8085 · SQS 9325
 
 El perfil `local` acorta los escalones de reintento para poder verlos completos y admite
 destinos HTTP. En cualquier otro perfil se exige HTTPS y se bloquean las direcciones internas.
