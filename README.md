@@ -315,18 +315,21 @@ Antes de un ensayo o de una demostración, para que los tableros no arrastren da
 anteriores. Logs y métricas viven en sistemas distintos, así que hay que limpiar los dos:
 
 ```bash
-# Logs: indice de Elasticsearch, archivos locales y el registro de posiciones de Filebeat
+# 1. Detener lo que escribe y lo que lee
+docker compose --profile apps stop consumer worker api
 docker compose --profile observability stop filebeat
+
+# 2. Borrar: indice de Elasticsearch, archivos locales, historial de Prometheus
 curl -X DELETE "http://localhost:9200/_data_stream/cobre-notifications*"
 rm -f logs/*
-docker compose --profile observability rm -f filebeat
+docker compose --profile observability rm -sf filebeat prometheus
 
-# Metricas: el historial de Prometheus y los contadores, que viven en cada proceso
-docker compose --profile observability rm -sf prometheus
-docker compose --profile apps restart consumer worker api
-
+# 3. Levantar de nuevo
 docker compose --profile apps --profile observability up -d
 ```
+
+El orden importa: borrar los archivos con los servicios corriendo no los cierra, y siguen
+escribiendo a un archivo que ya no existe hasta que se reinician.
 
 ### Apagar
 
