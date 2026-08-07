@@ -56,9 +56,13 @@ flowchart LR
     W -- "resuelve destino" --> SUB
     API --> SUB
 
-    style CON fill:#1f6feb,color:#fff
-    style W fill:#1f6feb,color:#fff
-    style API fill:#1f6feb,color:#fff
+    style CON fill:#1f6feb,color:#fff,stroke:none
+    style W fill:#1f6feb,color:#fff,stroke:none
+    style API fill:#1f6feb,color:#fff,stroke:none
+
+    %% El recuadro no es un componente: solo marca la frontera de lo que se
+    %% despliega y opera aqui. Sin relleno, para que no se lea como una caja mas.
+    style sistema fill:none,stroke:#1f6feb,stroke-width:2px,stroke-dasharray:6 4
 ```
 
 Dentro del recuadro, lo que se despliega y opera aquí: los tres ejecutables, la cola de
