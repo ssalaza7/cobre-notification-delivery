@@ -36,7 +36,7 @@ flowchart TB
     subgraph colas["Cola de trabajo"]
         direction LR
         Q[("SQS<br/>entrega")]
-        DLQ[("SQS<br/>cola muerta")]
+        DLQ[("SQS<br/>DLQ")]
     end
 
     subgraph datos["Almacenes"]

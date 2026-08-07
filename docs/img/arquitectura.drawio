@@ -40,7 +40,7 @@
         <mxCell id="sqs" value="SQS&#10;cola de entrega" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=12;whiteSpace=wrap;html=1;fillColor=#fff8dc;strokeColor=#b8860b;fontSize=13;" vertex="1" parent="colas">
           <mxGeometry x="30" y="50" width="200" height="80" as="geometry" />
         </mxCell>
-        <mxCell id="dlq" value="SQS&#10;cola muerta" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=12;whiteSpace=wrap;html=1;fillColor=#fff8dc;strokeColor=#b8860b;fontSize=13;" vertex="1" parent="colas">
+        <mxCell id="dlq" value="SQS&#10;DLQ" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=12;whiteSpace=wrap;html=1;fillColor=#fff8dc;strokeColor=#b8860b;fontSize=13;" vertex="1" parent="colas">
           <mxGeometry x="260" y="50" width="200" height="80" as="geometry" />
         </mxCell>
 
