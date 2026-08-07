@@ -165,7 +165,14 @@ dirección IP validada al establecer la conexión, en lugar de permitir una segu
 
 Sin firma, el receptor no puede distinguir una notificación legítima de una fabricada por
 quien conozca su URL. Cada entrega se firma con **HMAC-SHA256**:
-`X-Cobre-Signature: t=<epoch>,v1=<hex>`.
+dos cabeceras:
+
+```
+X-Cobre-Timestamp: 1786067224
+X-Cobre-Signature: fb23ed5fb5c0b8f91cf9a05b50d5ad546e4a9a2a0aaf894da568f2d6a1c570a9
+```
+
+La firma es el HMAC de `timestamp + "." + cuerpo`.
 
 El instante forma parte del contenido firmado y no solo de una cabecera independiente, lo que
 permite al receptor rechazar la reproducción de una captura antigua sin que la marca de tiempo

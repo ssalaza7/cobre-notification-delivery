@@ -141,6 +141,43 @@ seguridad y obliga a rotarlo.
 
 ---
 
+## Destino de las notificaciones
+
+Para una demostración con aspecto real conviene un destino HTTPS público. **webhook.site** da
+uno gratis: entrar, copiar la URL y registrarla.
+
+```bash
+curl -X POST http://localhost:8080/subscriptions \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"webhook_url":"https://webhook.site/<tu-uuid>"}'
+```
+
+Si el worker corre en contenedor, el `WEBHOOK_OVERRIDE_URL` del compose tiene precedencia sobre
+las suscripciones, así que hay que apuntarlo ahí:
+
+```bash
+WEBHOOK_OVERRIDE_URL=https://webhook.site/<tu-uuid> \
+  docker compose --profile apps up -d worker
+```
+
+Cada notificación aparece en el navegador al instante, con sus cabeceras:
+
+```
+X-Cobre-Timestamp        1786067224
+X-Cobre-Signature        fb23ed5fb5c0b8f91cf9a05b50d5ad546e4a9a2a0aaf894da568f2d6a1c570a9
+X-Cobre-Event-Id         EVT-REAL-1786067223
+X-Cobre-Delivery-Attempt 1
+```
+
+Es HTTPS real, de modo que sirve también con el perfil `demo`, que exige HTTPS y bloquea
+destinos internos.
+
+**Lo que no hace:** verificar la firma. Comprobar la cabecera es responsabilidad del receptor,
+y webhook.site solo la muestra. Cobre le pide lo mismo a sus integradores: firmar es del emisor,
+validar es del cliente. Para ver la verificación en pantalla está el receptor de pruebas.
+
+---
+
 ## Receptor de pruebas
 
 `scripts/webhook-receiver.py` cumple el papel del cliente: recibe la notificación, verifica la

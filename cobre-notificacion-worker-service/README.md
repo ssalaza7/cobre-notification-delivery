@@ -53,7 +53,8 @@ Agotados los intentos, el worker envía el mensaje a la DLQ con el motivo y el e
 
 ## Seguridad de la entrega
 
-Cada POST va firmado con HMAC-SHA256 en `X-Cobre-Signature: t=<epoch>,v1=<hex>`. El instante
+Cada POST va firmado con HMAC-SHA256 sobre `timestamp + "." + cuerpo`, en las cabeceras
+`X-Cobre-Timestamp` y `X-Cobre-Signature`. El instante
 forma parte del contenido firmado, de modo que el receptor puede rechazar la reproducción de
 una captura antigua.
 
