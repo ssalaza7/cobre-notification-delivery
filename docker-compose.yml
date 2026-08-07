@@ -135,6 +135,19 @@ services:
   # las imagenes, asi que no debe estar corriendo mientras se presenta.
   #
   #   docker compose --profile evidencia up -d grafana-renderer
+  # Consola de la base: explorar tablas y lanzar consultas desde el navegador.
+  db-console:
+    image: adminer:4.8.1
+    container_name: cobre-notifications-db-console
+    profiles: ["observability"]
+    depends_on:
+      postgres: {condition: service_healthy}
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DESIGN: dracula
+    ports:
+      - "${DB_CONSOLE_PORT:-8086}:8080"
+
   # Consola de Kafka: topics, particiones, mensajes y grupos de consumo.
   kafka-console:
     image: docker.redpanda.com/redpandadata/console:v2.7.2

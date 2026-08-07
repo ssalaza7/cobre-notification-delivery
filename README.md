@@ -308,6 +308,7 @@ npx newman run postman/cobre-notification-delivery.postman_collection.json
 | **Kibana** | http://localhost:5601 | La traza de cada notificación. Vistas: `./scripts/kibana-import.sh` |
 | **Kafka** | http://localhost:8085 | El topic, sus mensajes y el grupo de consumo |
 | **SQS** | http://localhost:9325 | La cola de entrega y la DLQ, con su profundidad |
+| **Base de datos** | http://localhost:8086 | Las tablas y sus datos (`postgres` / `cobre` / `cobre`) |
 
 ### Empezar de cero
 
@@ -341,7 +342,7 @@ Añadiendo `-v` borra también los datos de PostgreSQL.
 
 ### Puertos
 
-API 8080 · worker 8081 · consumer 8083 · Grafana 3000 · Kibana 5601 · Kafka 8085 · SQS 9325
+API 8080 · worker 8081 · consumer 8083 · Grafana 3000 · Kibana 5601 · Kafka 8085 · SQS 9325 · base 8086
 
 El perfil `local` acorta los escalones de reintento para poder verlos completos y admite
 destinos HTTP. En cualquier otro perfil se exige HTTPS y se bloquean las direcciones internas.
