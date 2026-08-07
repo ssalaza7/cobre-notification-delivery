@@ -1,0 +1,108 @@
+<mxfile host="app.diagrams.net" agent="cobre-notification-delivery" version="24.7.17">
+  <diagram name="Arquitectura" id="arquitectura">
+    <mxGraphModel dx="1400" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="826" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="svcExt" value="Servicios de la plataforma&#10;pagos · transferencias · saldos" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f6f8fa;strokeColor=#8c959f;fontSize=13;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="260" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="usr" value="Cliente&#10;consulta y reenvía" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f6f8fa;strokeColor=#8c959f;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="880" y="40" width="220" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="kafka" value="Kafka&#10;cobre.platform.events" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=12;whiteSpace=wrap;html=1;fillColor=#fff8dc;strokeColor=#b8860b;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="60" y="170" width="220" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="idp" value="Proveedor de identidad&#10;OIDC" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f6f8fa;strokeColor=#8c959f;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="880" y="310" width="220" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="hook" value="Webhook del cliente" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f6f8fa;strokeColor=#8c959f;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="880" y="510" width="220" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="svc" value="Entrega de notificaciones" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#57606a;dashed=1;verticalAlign=top;fontSize=13;fontStyle=1;align=left;spacingLeft=10;spacingTop=4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="300" width="780" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="consumer" value="consumer&#10;ingesta y encola" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1f6feb;strokeColor=none;fontColor=#ffffff;fontSize=13;fontStyle=1" vertex="1" parent="svc">
+          <mxGeometry x="30" y="55" width="210" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="worker" value="worker&#10;entrega y reintenta" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1f6feb;strokeColor=none;fontColor=#ffffff;fontSize=13;fontStyle=1" vertex="1" parent="svc">
+          <mxGeometry x="285" y="55" width="210" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="api" value="api&#10;consulta y reenvío" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1f6feb;strokeColor=none;fontColor=#ffffff;fontSize=13;fontStyle=1" vertex="1" parent="svc">
+          <mxGeometry x="540" y="55" width="210" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="colas" value="Cola de trabajo" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#57606a;dashed=1;verticalAlign=top;fontSize=13;fontStyle=1;align=left;spacingLeft=10;spacingTop=4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="500" width="490" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="sqs" value="SQS&#10;cola de entrega" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=12;whiteSpace=wrap;html=1;fillColor=#fff8dc;strokeColor=#b8860b;fontSize=13;" vertex="1" parent="colas">
+          <mxGeometry x="30" y="50" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="dlq" value="SQS&#10;cola muerta" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=12;whiteSpace=wrap;html=1;fillColor=#fff8dc;strokeColor=#b8860b;fontSize=13;" vertex="1" parent="colas">
+          <mxGeometry x="260" y="50" width="200" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="datos" value="Almacenes" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#57606a;dashed=1;verticalAlign=top;fontSize=13;fontStyle=1;align=left;spacingLeft=10;spacingTop=4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="700" width="780" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="subs" value="DynamoDB&#10;suscripciones" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=12;whiteSpace=wrap;html=1;fillColor=#e6f4ea;strokeColor=#2da44e;fontSize=13;" vertex="1" parent="datos">
+          <mxGeometry x="30" y="50" width="320" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="eventos" value="DynamoDB&#10;notificaciones + intentos" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=12;whiteSpace=wrap;html=1;fillColor=#e6f4ea;strokeColor=#2da44e;fontSize=13;" vertex="1" parent="datos">
+          <mxGeometry x="400" y="50" width="340" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;" edge="1" parent="1" source="svcExt" target="kafka">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;" edge="1" parent="1" source="kafka" target="consumer">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;" edge="1" parent="1" source="usr" target="api">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" value="token" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;" edge="1" parent="1" source="api" target="idp">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;" edge="1" parent="1" source="consumer" target="sqs">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;" edge="1" parent="1" source="sqs" target="worker">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" value="reintento con retardo" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;" edge="1" parent="1" source="worker" target="sqs">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" value="reenvío" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;" edge="1" parent="1" source="api" target="sqs">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e9" value="reintentos agotados" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;" edge="1" parent="1" source="worker" target="dlq">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e10" value="mensaje no confirmado" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;fontSize=11;" edge="1" parent="1" source="sqs" target="dlq">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e11" value="POST firmado HMAC" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;" edge="1" parent="1" source="worker" target="hook">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e12" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;" edge="1" parent="1" source="consumer" target="eventos">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e13" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;" edge="1" parent="1" source="worker" target="eventos">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e14" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;" edge="1" parent="1" source="api" target="eventos">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e15" value="resuelve destino" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;" edge="1" parent="1" source="worker" target="subs">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e16" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;" edge="1" parent="1" source="api" target="subs">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
