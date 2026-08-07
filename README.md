@@ -19,35 +19,29 @@ GET  /subscriptions                    las suscripciones del cliente
 ## 1. Arquitectura
 
 ```mermaid
-flowchart TB
+flowchart LR
     SVC["Servicios de la plataforma<br/>pagos · transferencias · saldos"]
-    USR["Cliente<br/>consulta y reenvía"]
     K[("Kafka<br/>cobre.platform.events")]
+    USR["Cliente"]
     IDP["Proveedor de identidad<br/>OIDC"]
-    CLI["Webhook del cliente"]
+    HOOK["Webhook del cliente"]
 
-    subgraph svc["Entrega de notificaciones"]
-        direction LR
+    subgraph sistema["Entrega de notificaciones"]
+        direction TB
         CON["<b>consumer</b><br/>ingesta y encola"]
         W["<b>worker</b><br/>entrega y reintenta"]
         API["<b>api</b><br/>consulta y reenvío"]
-    end
-
-    subgraph colas["Cola de trabajo"]
-        direction LR
-        Q[("SQS<br/>entrega")]
+        Q[("SQS<br/>cola de entrega")]
         DLQ[("SQS<br/>DLQ")]
-    end
-
-    subgraph datos["Almacenes"]
-        direction LR
         SUB[("DynamoDB<br/>suscripciones")]
         DB[("DynamoDB<br/>notificaciones + intentos")]
     end
 
-    SVC --> K --> CON
+    SVC --> K
+    K --> CON
     USR --> API
-    API --> IDP
+    API -- "token" --> IDP
+    W -- "POST firmado HMAC" --> HOOK
 
     CON --> Q
     Q --> W
@@ -55,8 +49,6 @@ flowchart TB
     API -- "reenvío" --> Q
     W -- "reintentos agotados" --> DLQ
     Q -. "mensaje no confirmado" .-> DLQ
-
-    W -- "POST firmado HMAC" --> CLI
 
     CON --> DB
     W --> DB
@@ -68,6 +60,10 @@ flowchart TB
     style W fill:#1f6feb,color:#fff
     style API fill:#1f6feb,color:#fff
 ```
+
+Dentro del recuadro, lo que se despliega y opera aquí: los tres ejecutables, la cola de
+trabajo y los almacenes. Fuera, lo que pertenece a otros: el bus de la plataforma, el
+proveedor de identidad y el sistema del cliente.
 
 Tres ejecutables sobre una misma librería. El bus y la cola de trabajo cumplen papeles
 distintos: Kafka reparte lo que la plataforma publica, y SQS es donde espera cada entrega
