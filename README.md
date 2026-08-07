@@ -129,9 +129,7 @@ sequenceDiagram
     W->>Q: borra el mensaje (confirmación)
 ```
 
-Ni Kafka ni SQS empujan mensajes: el consumidor y el worker preguntan, y la llamada se queda
-esperando hasta que haya algo o venza el tiempo. Por eso las flechas de petición salen de los
-componentes, no de los brokers.
+Ni Kafka ni SQS empujan: el consumidor y el worker piden con *long polling*.
 
 Entrega **al menos una vez**: el offset de Kafka se confirma tras persistir y el mensaje de SQS
 se borra tras entregar. La ingesta es idempotente por `event_id` y cada entrega lleva la
@@ -359,16 +357,11 @@ destinos HTTP. En cualquier otro perfil se exige HTTPS y se bloquean las direcci
 
 ## 7. Limitaciones conocidas
 
-1. **No hay circuit breaker por cliente.** Un destino caído durante horas continúa
-   consumiendo intentos en cada evento.
-2. **El límite de tasa es por instancia**, no global. Contiene el abuso accidental pero no el
-   deliberado. En un despliegue en AWS este control corresponde al WAF.
-3. **No hay pruebas de integración con infraestructura real.** Los adaptadores de
-   persistencia y el cableado de beans quedan fuera del umbral de cobertura. El paso
-   pendiente es Testcontainers.
-4. **El secreto de firma del webhook se almacena en texto plano.** No admite hash porque debe
-   usarse para calcular el HMAC de cada entrega. La mitigación es cifrarlo con KMS.
-5. **La DLQ no dispone de reproceso automático** ni de alarma por profundidad de cola.
+1. **No hay circuit breaker por cliente.**
+2. **El límite de tasa es por instancia**, no global.
+3. **No hay pruebas de integración con infraestructura real.** Pendiente: Testcontainers.
+4. **El secreto de firma del webhook se almacena en texto plano.** Pendiente: cifrarlo con KMS.
+5. **La DLQ no tiene reproceso automático** ni alarma por profundidad.
 
 ---
 

@@ -47,9 +47,7 @@ Agotados los intentos, el worker envía el mensaje a la DLQ con el motivo y el e
 ## Seguridad de la entrega
 
 Cada POST va firmado con HMAC-SHA256 sobre `timestamp + "." + cuerpo`, en las cabeceras
-`X-Cobre-Timestamp` y `X-Cobre-Signature`. El instante
-forma parte del contenido firmado, de modo que el receptor puede rechazar la reproducción de
-una captura antigua.
+`X-Cobre-Timestamp` y `X-Cobre-Signature`. El instante forma parte del contenido firmado.
 
 Antes de llamar, la URL se valida: fuera del perfil `local` se exige HTTPS y se rechazan las
 direcciones que resuelvan a la red interna.

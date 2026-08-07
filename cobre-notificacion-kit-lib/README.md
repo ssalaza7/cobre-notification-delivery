@@ -53,9 +53,8 @@ Spring Security (solo la api).
 
 ## Migraciones
 
-Las migraciones de Flyway viven en `src/main/resources/db/migration` y viajan con la librería,
-de modo que cualquiera de los tres servicios puede aplicarlas al arrancar. Las credenciales de
-demostración están aparte, en `db/demo`, y solo las cargan los perfiles `local` y `demo`.
+Las migraciones de Flyway viven en `src/main/resources/db/migration`. Las credenciales de
+demostración están en `db/demo`, que solo cargan los perfiles `local` y `demo`.
 
 ---
 
