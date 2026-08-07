@@ -199,8 +199,10 @@ services:
     environment:
       <<: *entorno-comun
       SERVER_PORT: 8081
-      # El receptor de pruebas corre en la maquina anfitriona, no en la red de compose.
-      WEBHOOK_OVERRIDE_URL: ${WEBHOOK_OVERRIDE_URL:-http://host.docker.internal:9090/webhooks/demo}
+      # Vacio por defecto: manda el destino que el cliente registro por la API. Definirlo
+      # sobrescribe TODAS las suscripciones, y solo tiene sentido para redirigir una
+      # demostracion a una URL que se conoce el mismo dia.
+      WEBHOOK_OVERRIDE_URL: ${WEBHOOK_OVERRIDE_URL:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:

@@ -66,7 +66,7 @@ Administrar suscripciones exige el scope `subscriptions:manage`, distinto del de
 solo consulta no debe poder redirigir a dónde se entregan las notificaciones. `CLIENT003` no lo
 tiene, y recibe 403.
 
-### Redirección global por variable de entorno
+### Redirección global, solo si hace falta
 
 ```bash
 WEBHOOK_OVERRIDE_URL=https://el-destino/webhook \
@@ -152,13 +152,7 @@ curl -X POST http://localhost:8080/subscriptions \
   -d '{"webhook_url":"https://webhook.site/<tu-uuid>"}'
 ```
 
-Si el worker corre en contenedor, el `WEBHOOK_OVERRIDE_URL` del compose tiene precedencia sobre
-las suscripciones, así que hay que apuntarlo ahí:
-
-```bash
-WEBHOOK_OVERRIDE_URL=https://webhook.site/<tu-uuid> \
-  docker compose --profile apps up -d worker
-```
+Con eso basta: el destino sale de la suscripción y no hace falta reiniciar nada.
 
 Cada notificación aparece en el navegador al instante, con sus cabeceras:
 
