@@ -68,13 +68,7 @@ explícita, con el motivo del descarte.
 | **worker** | Entrega al webhook y aplica los reintentos | Profundidad de la cola |
 | **api** | Consulta y reenvío manual | Peticiones por segundo |
 
-Se despliegan por separado porque sus cargas son de naturaleza distinta: el worker sigue el
-ritmo de la plataforma y la API el de las personas. Escalar una no debe obligar a provisionar
-réplicas de la otra. Además, la saturación de cada una tiene consecuencias diferentes —
-consultas degradadas frente a notificaciones sin entregar.
-
-Cada componente es un artefacto propio y carga solo las dependencias que usa. Verificable
-sobre los jars construidos:
+Cada uno se despliega por separado y carga solo las dependencias que usa:
 
 | Componente | Dependencia propia | Lo que no incluye |
 |---|---|---|
@@ -82,22 +76,17 @@ sobre los jars construidos:
 | `worker` | cliente HTTP reactivo, firma HMAC | Kafka, Spring Security |
 | `api` | Spring Security, resource server JWT | Kafka |
 
-Qué adaptadores se activan lo determina el classpath de cada artefacto, no una condición
-evaluada al arrancar.
+### Kafka y SQS
 
-### Kafka como bus, SQS como cola de trabajo
+Kafka es el bus de la plataforma: no elimina el mensaje al leerlo, de modo que varios servicios
+consumen el mismo evento.
 
-Kafka transporta los eventos que publica la plataforma. No elimina el mensaje al leerlo, por
-lo que varios servicios pueden consumir el mismo evento de forma independiente.
+SQS es la cola de trabajo de las entregas. Aporta el retardo por mensaje que implementa el
+backoff (`DelaySeconds`) y la cola de mensajes no entregados (DLQ).
 
-SQS contiene el trabajo pendiente de entrega. Se emplea para esta etapa por dos razones: el
-paralelismo en Kafka está limitado por el número de particiones, mientras que en SQS cada
-consumidor toma el siguiente mensaje disponible; y SQS ofrece de forma nativa el retardo por
-mensaje que implementa el backoff (`DelaySeconds`) y la cola de mensajes no entregados (DLQ).
+En local son Redpanda y ElasticMQ, que hablan los mismos protocolos.
 
-En entorno local se usan Redpanda y ElasticMQ, que implementan los mismos protocolos. El
-código es idéntico al que se ejecutaría contra Confluent Cloud y AWS; solo cambian las
-direcciones de conexión.
+El razonamiento detrás de esta separación está en el [documento de diseño](docs/01-diseno-del-sistema.md#8-propiedades-exigidas-a-la-infraestructura).
 
 ---
 
