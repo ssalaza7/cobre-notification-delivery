@@ -19,52 +19,48 @@ GET  /subscriptions                    las suscripciones del cliente
 ## 1. Arquitectura
 
 ```mermaid
-%%{init: {"flowchart": {"curve": "basis"}}}%%
 flowchart LR
     SVC["Servicios de la plataforma<br/>pagos · transferencias · saldos"]
     K[("Kafka<br/>cobre.platform.events")]
-    USR["Cliente"]
-
-    CON["<b>consumer</b><br/>ingesta y encola"]
-    W["<b>worker</b><br/>entrega y reintenta"]
-    API["<b>api</b><br/>consulta y reenvío"]
-
     Q[("SQS<br/>cola de entrega")]
     DLQ[("SQS<br/>DLQ")]
-    HOOK["Webhook del cliente"]
-    IDP["Proveedor de identidad<br/>OIDC"]
-
     DB[("DynamoDB<br/>notificaciones + intentos")]
     SUB[("DynamoDB<br/>suscripciones")]
+    IDP["Proveedor de identidad<br/>OIDC"]
+    CLI["Webhook del cliente"]
+    USR["Cliente"]
 
-    SVC -- "publica" --> K
-    CON -- "sondea" --> K
-    CON -- "encola" --> Q
-    W -- "sondea y reencola" --> Q
-    W -- "reintentos agotados" --> DLQ
-    Q -. "redrive automático" .-> DLQ
-    W -- "POST firmado HMAC" --> HOOK
-    USR -- "consulta y reenvía" --> API
-    API -- "pide el token" --> IDP
-    API -- "encola el reenvío" --> Q
+    subgraph svc["Entrega de notificaciones"]
+        CON["<b>consumer</b><br/>ingesta y encola"]
+        W["<b>worker</b><br/>entrega y reintenta"]
+        API["<b>api</b><br/>consulta y reenvío"]
+    end
 
-    CON -- "persiste" --> DB
-    W -- "estado e intento" --> DB
-    API -- "consulta" --> DB
-    W -- "resuelve destino" --> SUB
-    API -- "administra" --> SUB
+    SVC -->|publica| K
+    CON -->|sondea| K
+    CON -->|persiste| DB
+    CON -->|encola| Q
+    W -->|toma la orden<br/>y reencola reintentos| Q
+    W -->|resuelve destino| SUB
+    W -->|registra intento| DB
+    W -->|POST firmado HMAC| CLI
+    W -->|reintentos agotados| DLQ
+    Q -.->|mensaje no confirmado| DLQ
+    USR -->|consulta · reenvía| API
+    API -->|consulta| DB
+    API -->|administra| SUB
+    API -->|pide el token| IDP
+    API -->|encola reenvío| Q
 
-    style CON fill:#1f6feb,color:#fff,stroke:none
-    style W fill:#1f6feb,color:#fff,stroke:none
-    style API fill:#1f6feb,color:#fff,stroke:none
+    style CON fill:#1f6feb,color:#fff
+    style W fill:#1f6feb,color:#fff
+    style API fill:#1f6feb,color:#fff
 ```
 
-Ni el bus ni la cola empujan: el `consumer` y el `worker` piden con long polling, y por eso
-las flechas salen de quien inicia la llamada. La punteada es el redrive automatico de SQS,
-lo unico que ocurre sin que ningun componente lo pida.
+La línea punteada es el redrive automático de SQS; el resto son llamadas del componente. Ni el
+bus ni la cola empujan: el `consumer` y el `worker` piden con long polling, y por eso esas
+flechas salen de ellos.
 
-> El mismo diagrama esta en [`docs/img/arquitectura.drawio`](docs/img/arquitectura.drawio),
-> editable con [draw.io](https://app.diagrams.net) si hace falta recolocar algo.
 
 Dos caminos. El de la izquierda es automatico: un evento entra por el bus y sale por el
 webhook del cliente. El de la derecha lo inicia el cliente cuando consulta o pide un reenvio.
