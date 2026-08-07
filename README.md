@@ -104,24 +104,23 @@ Cada componente tiene su propia capa de aplicación y sus adaptadores. Lo único
 el interior del hexágono.
 
 ```
-cobre-notificacion-domain/            modelo · reglas · puertos
-                                      sin framework, sin dependencias
-
-cobre-notificacion-kit/               implementa los puertos compartidos:
-                                      R2DBC · SQS · Micrometer · logs
-
-cobre-notificacion-consumer-service/  application/     IngestNotificationEventService
-                                      infrastructure/  adaptador Kafka
-
-cobre-notificacion-worker-service/    application/     DeliverNotificationEventService
-                                      infrastructure/  cola SQS · WebClient + HMAC
-
-cobre-notificacion-api-service/       application/     Query · Get · Replay · Token
-                                      infrastructure/  REST · seguridad · tokens
+cobre-notificacion-kit-lib/           modelo · reglas · puertos · adaptadores compartidos
+cobre-notificacion-consumer-service/  ingesta desde el bus
+cobre-notificacion-worker-service/    entrega y reintentos
+cobre-notificacion-api-service/       consulta y reenvío
 ```
 
-El sufijo `-service` marca lo que se despliega. Los dos módulos sin sufijo no producen
-contenedor: viajan dentro de los tres ejecutables.
+Los sufijos dicen qué es cada uno: `-service` produce jar ejecutable, imagen y contenedor
+propios; `-lib` no arranca y viaja dentro de los tres.
+
+Cada módulo documenta lo suyo:
+
+| Módulo | Qué hace |
+|---|---|
+| [kit-lib](cobre-notificacion-kit-lib/README.md) | Modelo, reglas, puertos y los adaptadores que comparten |
+| [consumer-service](cobre-notificacion-consumer-service/README.md) | Consume el bus, persiste y encola |
+| [worker-service](cobre-notificacion-worker-service/README.md) | Entrega al webhook, reintenta y rinde a la DLQ |
+| [api-service](cobre-notificacion-api-service/README.md) | Consulta, reenvío y emisión de tokens |
 
 Los casos de uso viven donde se usan: ninguno lo comparten dos componentes. El modelo sí se
 comparte, porque los tres operan sobre las mismas tablas y la misma máquina de estados;

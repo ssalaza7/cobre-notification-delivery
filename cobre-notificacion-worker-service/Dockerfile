@@ -11,7 +11,7 @@ COPY gradlew settings.gradle.kts build.gradle.kts ./
 COPY gradle gradle
 # Se copian todos los modulos porque settings.gradle.kts los declara y Gradle exige que
 # sus directorios existan, aunque esta imagen solo compile uno.
-COPY cobre-notificacion-kit cobre-notificacion-kit
+COPY cobre-notificacion-kit-lib cobre-notificacion-kit-lib
 COPY cobre-notificacion-consumer-service cobre-notificacion-consumer-service
 COPY cobre-notificacion-worker-service cobre-notificacion-worker-service
 COPY cobre-notificacion-api-service cobre-notificacion-api-service
