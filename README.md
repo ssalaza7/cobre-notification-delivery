@@ -1,7 +1,7 @@
 # cobre-notification-delivery
 
-Servicio de entrega de notificaciones de eventos a webhooks de clientes, con reintentos,
-firma HMAC y bitácora de intentos. Expone una API self-service de consulta y reenvío.
+Entrega notificaciones de eventos a los webhooks de los clientes, con reintentos, firma
+HMAC y bitácora de cada intento. Expone además una API self-service de consulta y reenvío.
 
 Prueba técnica para Cobre.
 
