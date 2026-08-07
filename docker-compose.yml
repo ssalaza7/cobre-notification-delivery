@@ -184,6 +184,11 @@ services:
       SQS_ENDPOINT: http://elasticmq:9324
       SQS_DELIVERY_QUEUE: http://elasticmq:9324/000000000000/notifications-delivery
       SQS_DLQ: http://elasticmq:9324/000000000000/notifications-dlq
+      LOGGING_FILE_NAME: /app-logs/consumer.json
+    volumes:
+      # Filebeat lee esta carpeta. Un archivo por servicio: si los tres
+      # escribieran en el mismo, las lineas se entremezclarian.
+      - ./logs:/app-logs
     ports:
       - "${CONSUMER_PORT:-8083}:8083"
 
@@ -199,12 +204,17 @@ services:
     environment:
       <<: *entorno-comun
       SERVER_PORT: 8081
+      LOGGING_FILE_NAME: /app-logs/worker.json
       # Vacio por defecto: manda el destino que el cliente registro por la API. Definirlo
       # sobrescribe TODAS las suscripciones, y solo tiene sentido para redirigir una
       # demostracion a una URL que se conoce el mismo dia.
       WEBHOOK_OVERRIDE_URL: ${WEBHOOK_OVERRIDE_URL:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    volumes:
+      # Filebeat lee esta carpeta. Un archivo por servicio: si los tres
+      # escribieran en el mismo, las lineas se entremezclarian.
+      - ./logs:/app-logs
     ports:
       - "${WORKER_PORT:-8081}:8081"
 
@@ -220,6 +230,11 @@ services:
     environment:
       <<: *entorno-comun
       SERVER_PORT: 8080
+      LOGGING_FILE_NAME: /app-logs/api.json
+    volumes:
+      # Filebeat lee esta carpeta. Un archivo por servicio: si los tres
+      # escribieran en el mismo, las lineas se entremezclarian.
+      - ./logs:/app-logs
     ports:
       - "${API_PORT:-8080}:8080"
 
