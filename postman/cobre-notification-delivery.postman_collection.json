@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Cobre — Entrega de notificaciones",
-    "description": "Recorrido completo, en orden de ejecucion.\n\nANTES DE EMPEZAR\n1. Abre https://webhook.site y copia la URL que te asigna.\n2. Pegala en la variable webhook_url de la coleccion.\n3. Levanta el entorno:  docker compose --profile apps up -d --build\n\nLas notificaciones apareceran en esa pestana del navegador, con su firma y su numero de intento.\n\nLas peticiones encadenan variables entre si, asi que basta ejecutar la coleccion de arriba abajo. Entre la carpeta 3 y la 4 conviene esperar unos quince segundos, el tiempo que tarda el ciclo de reintentos en agotarse.",
+    "description": "Recorrido completo, en orden de ejecucion. No hace falta preparar nada: la coleccion crea sus propios destinos en webhook.site y los registra sola.\n\nAntes de empezar, levanta el entorno:\n\n    docker compose --profile apps up -d --build\n\nLa peticion 1.1 deja en la consola de Postman el enlace de la pagina donde veras llegar las notificaciones en vivo.\n\nEntre la carpeta 3 y la 4 conviene esperar unos quince segundos, el tiempo que tarda el ciclo de reintentos en agotarse.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -26,10 +26,6 @@
       "value": "demo-secret-client002"
     },
     {
-      "key": "webhook_url",
-      "value": "https://webhook.site/PEGA-AQUI-TU-UUID"
-    },
-    {
       "key": "token",
       "value": ""
     },
@@ -48,6 +44,14 @@
     {
       "key": "intentos_previos",
       "value": ""
+    },
+    {
+      "key": "webhook_url",
+      "value": ""
+    },
+    {
+      "key": "webhook_fail_url",
+      "value": ""
     }
   ],
   "item": [
@@ -55,7 +59,50 @@
       "name": "1 · Preparacion",
       "item": [
         {
-          "name": "1.1 Obtener token",
+          "name": "1.1 Crear un destino de prueba",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "https://webhook.site/token",
+              "protocol": "https",
+              "host": [
+                "webhook",
+                "site"
+              ],
+              "path": [
+                "token"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"default_status\": 200\n}"
+            },
+            "description": "Pide a webhook.site una URL publica HTTPS y la guarda en la variable webhook_url.\n\nEn la consola de Postman queda el enlace para abrir esa pagina en el navegador y ver llegar las notificaciones en vivo, con su firma y su numero de intento."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('webhook.site asigno un destino', () => pm.response.to.have.status(201));",
+                  "const uuid = pm.response.json().uuid;",
+                  "pm.collectionVariables.set('webhook_url', 'https://webhook.site/' + uuid);",
+                  "console.log('Abre esta pagina para ver llegar las notificaciones:');",
+                  "console.log('  https://webhook.site/#!/view/' + uuid);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.2 Obtener token",
           "request": {
             "method": "POST",
             "header": [
@@ -109,7 +156,7 @@
           ]
         },
         {
-          "name": "1.2 Registrar mi webhook",
+          "name": "1.3 Registrar mi webhook",
           "request": {
             "method": "POST",
             "header": [
@@ -152,7 +199,7 @@
           ]
         },
         {
-          "name": "1.3 Ver mis webhooks",
+          "name": "1.4 Ver mis webhooks",
           "request": {
             "method": "GET",
             "header": [
@@ -258,7 +305,93 @@
       "name": "3 · Flujo con reintento",
       "item": [
         {
-          "name": "3.1 Publicar un evento que el destino rechaza",
+          "name": "3.1 Crear un destino que rechaza la entrega",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "https://webhook.site/token",
+              "protocol": "https",
+              "host": [
+                "webhook",
+                "site"
+              ],
+              "path": [
+                "token"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"default_status\": 503\n}"
+            },
+            "description": "El mismo servicio, configurado para responder 503 a todo. Es lo que provoca el ciclo de reintentos sin depender de ningun script local."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('webhook.site asigno un destino', () => pm.response.to.have.status(201));",
+                  "const uuid = pm.response.json().uuid;",
+                  "pm.collectionVariables.set('webhook_fail_url', 'https://webhook.site/' + uuid);",
+                  "console.log('Abre esta pagina para ver llegar las notificaciones:');",
+                  "console.log('  https://webhook.site/#!/view/' + uuid);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3.2 Apuntar el webhook a ese destino",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/subscriptions",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "subscriptions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"webhook_url\": \"{{webhook_fail_url}}\"\n}"
+            },
+            "description": "Actualiza el destino registrado. El secreto de firma no cambia."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('actualizado', () => pm.response.to.have.status(201));",
+                  "pm.test('conserva el secreto de firma', () =>",
+                  "  pm.expect(pm.response.json().signing_secret).to.match(/^whsec_/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3.3 Publicar un evento que el destino rechaza",
           "request": {
             "method": "POST",
             "header": [

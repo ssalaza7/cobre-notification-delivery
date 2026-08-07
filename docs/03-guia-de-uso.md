@@ -143,18 +143,12 @@ seguridad y obliga a rotarlo.
 
 ## Destino de las notificaciones
 
-Para una demostración con aspecto real conviene un destino HTTPS público. **webhook.site** da
-uno gratis: entrar, copiar la URL y registrarla.
+El destino sale de lo que el cliente registre con `POST /subscriptions`. Para verlas llegar en
+vivo la vía más simple es **webhook.site**, que asigna una URL pública HTTPS.
 
-```bash
-curl -X POST http://localhost:8080/subscriptions \
-  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"webhook_url":"https://webhook.site/<tu-uuid>"}'
-```
-
-Con eso basta: el destino sale de la suscripción y no hace falta reiniciar nada.
-
-Cada notificación aparece en el navegador al instante, con sus cabeceras:
+**No hace falta crearla a mano:** la colección de Postman la pide sola y la registra. Su primera
+petición deja en la consola el enlace de la página donde aparecen las notificaciones, con sus
+cabeceras:
 
 ```
 X-Cobre-Timestamp        1786067224
@@ -166,32 +160,11 @@ X-Cobre-Delivery-Attempt 1
 Es HTTPS real, de modo que sirve también con el perfil `demo`, que exige HTTPS y bloquea
 destinos internos.
 
-**Lo que no hace:** verificar la firma. Comprobar la cabecera es responsabilidad del receptor,
-y webhook.site solo la muestra. Cobre le pide lo mismo a sus integradores: firmar es del emisor,
-validar es del cliente. Para ver la verificación en pantalla está el receptor de pruebas.
+### Simular un destino que falla
 
----
-
-## Simular un destino que falla
-
-Para demostrar los reintentos hace falta un destino que rechace la entrega. webhook.site
-permite fijar el codigo de respuesta al crear el endpoint:
-
-```bash
-curl -X POST https://webhook.site/token \
-  -H 'Content-Type: application/json' \
-  -d '{"default_status":503}'
-```
-
-Registrando ese destino en un cliente y el normal en otro, la demostracion muestra los dos
-comportamientos a la vez sin tocar nada a mitad:
-
-```
-CLIENT002 -> destino que responde 200   entrega a la primera
-CLIENT001 -> destino que responde 503   reintenta con backoff y termina en failed
-```
-
-Los intentos se ven llegar en la pantalla de webhook.site con su numero y su hora:
+webhook.site permite fijar el código de respuesta del endpoint. La colección crea uno que
+responde 503 y lo registra antes de publicar el evento de la carpeta 3, de modo que el ciclo de
+reintentos se ve llegar en la misma pantalla:
 
 ```
 intento 1 · 01:57:21
@@ -201,18 +174,24 @@ intento 3 · 01:57:31      +6 s
 
 Las esperas crecientes y no redondas son el backoff exponencial con jitter.
 
+### Lo que no hace
+
+Verificar la firma. Comprobar la cabecera es responsabilidad del receptor, y webhook.site solo
+la muestra. Cobre le pide lo mismo a sus integradores: firmar es del emisor, validar es del
+cliente. La comprobación del cálculo queda cubierta por `WebhookSignerTest`.
+
 ---
 
 ## Colección de Postman
 
-En [postman/](../postman/). Diez peticiones en cuatro carpetas, en orden de ejecución: las
+En [postman/](../postman/). Trece peticiones en cuatro carpetas, en orden de ejecución: las
 variables se encadenan solas, así que basta recorrerla de arriba abajo.
 
 | Carpeta | Peticiones | Contenido |
 |---|---|---|
-| 1 · Preparación | 3 | Token, registro del webhook y consulta de las suscripciones |
+| 1 · Preparación | 4 | Crea el destino en webhook.site, obtiene token, registra y consulta |
 | 2 · Flujo exitoso | 1 | Publicar un evento. **Es lo único que se hace**: el resto es autónomo |
-| 3 · Flujo con reintento | 1 | Publicar un evento cuyo destino rechaza |
+| 3 · Flujo con reintento | 3 | Crea un destino que responde 503, lo registra y publica |
 | 4 · Consulta y reenvío | 5 | Listado, filtro, detalle, reenvío y comprobación de la bitácora |
 
 Entre la carpeta 3 y la 4 conviene esperar unos quince segundos, el tiempo que tarda el ciclo
