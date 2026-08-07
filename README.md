@@ -138,15 +138,9 @@ Ni Kafka ni SQS empujan mensajes: el consumidor y el worker preguntan, y la llam
 esperando hasta que haya algo o venza el tiempo. Por eso las flechas de petición salen de los
 componentes, no de los brokers.
 
-El offset de Kafka se confirma después de persistir el evento, y el mensaje de SQS se elimina
-después de completar la entrega. Si el proceso termina de forma abrupta en un punto
-intermedio, el evento se reentrega.
-
-La garantía es, por tanto, de entrega **al menos una vez**: una notificación puede llegar
-duplicada al cliente. La alternativa —confirmar antes de procesar— produciría pérdida
-silenciosa de eventos, que en notificaciones de pagos tiene mayor impacto que un duplicado.
-El duplicado se acota por dos vías: la ingesta es idempotente por `event_id`, y cada entrega
-incluye la cabecera `X-Cobre-Event-Id` para que el receptor descarte repeticiones.
+Entrega **al menos una vez**: el offset de Kafka se confirma tras persistir y el mensaje de SQS
+se borra tras entregar. La ingesta es idempotente por `event_id` y cada entrega lleva la
+cabecera `X-Cobre-Event-Id` para que el receptor descarte repeticiones.
 
 ### 3.2 Entrega recuperada tras reintentos
 
@@ -171,12 +165,8 @@ sequenceDiagram
     Note over W: completed en el intento 2
 ```
 
-Los escalones de espera son 5s, 30s, 2m, 10m y 15m. El último coincide con el máximo que
-admite `DelaySeconds` en SQS.
-
-Cada espera incorpora un componente aleatorio (*jitter*) de hasta el 20 %. Sin él, todas las
-notificaciones acumuladas durante la caída de un destino se reintentarían en el mismo
-instante, generando un pico de carga sobre un sistema que acaba de restablecerse.
+Escalones de espera: **5s · 30s · 2m · 10m · 15m**, cada uno con un componente aleatorio
+(*jitter*) de hasta el 20 %.
 
 ### 3.3 Reintentos agotados
 
@@ -198,11 +188,9 @@ sequenceDiagram
     Note over W: failed · habilitado para reenvío manual
 ```
 
-El evento queda en estado `failed` con su bitácora completa y el mensaje se deriva a la DLQ
-(*dead letter queue*) para inspección. Ninguna información se descarta.
+El evento queda en `failed` con su bitácora completa y el mensaje se deriva a la DLQ.
 
-Las respuestas 4xx no llegan a este escenario: se clasifican como fallo permanente y no se
-reintentan, dado que la repetición produciría el mismo resultado.
+Las respuestas 4xx no llegan aquí: se clasifican como fallo permanente y no se reintentan.
 
 ### 3.4 Reenvío manual
 
@@ -225,8 +213,8 @@ sequenceDiagram
     Q-->>W: la orden del reenvío, sin camino aparte
 ```
 
-La respuesta es 202 y no 200: la solicitud queda encolada, no entregada. La bitácora es de
-solo adición, por lo que el reenvío conserva los intentos del ciclo anterior.
+Responde **202**: la solicitud queda encolada. La bitácora es de solo adición, así que el
+reenvío conserva los intentos del ciclo anterior.
 
 ---
 
@@ -244,11 +232,8 @@ Evento que falla en el primer intento y se entrega en el segundo:
 17:24:37.240            INFO         Notificacion EVT-RECUPERA-README entregada al cliente CLIENT001 en el intento 2
 ```
 
-`PT3.234S` es la representación ISO-8601 de 3,234 segundos; el decimal corresponde al jitter.
-
-Cada línea incluye `event_id`, `client_id` y `request_id` como campos indexados, lo que
-permite reconstruir el ciclo completo con una sola consulta. El campo `content` de la
-notificación no se registra, por tratarse de información financiera del cliente.
+`PT3.234S` son 3,234 segundos en formato ISO-8601. Cada línea lleva `event_id`, `client_id` y
+`request_id` como campos indexados. El `content` de la notificación no se registra.
 
 ### Consulta de los logs en Kibana
 
@@ -260,10 +245,8 @@ traza de un evento. Se cargan con `./scripts/kibana-import.sh`.
 
 ![Tablero de Grafana](docs/img/grafana-tablero.png)
 
-Los indicadores principales son *reintentos exitosos* (entregas recuperadas por el backoff,
-que cuantifican el valor de la estrategia de reintentos), *reintentos agotados* (casos que
-requieren intervención) y *clientes con entregas fallando* (identificación del cliente
-afectado para notificar a su equipo).
+Paneles: entregadas, fallidas, reintentos exitosos, reintentos agotados, reenvíos manuales,
+errores por código, latencia del webhook, clientes con entregas fallando y timeouts.
 
 ### Bitácora devuelta por la API
 
