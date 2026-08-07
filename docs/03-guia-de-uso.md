@@ -232,7 +232,6 @@ que Prometheus pueda raspar sus métricas.
 | Kibana — las vistas se cargan con `./scripts/kibana-import.sh` | http://localhost:5601 |
 | Kafka — el topic, sus mensajes y el grupo de consumo | http://localhost:8085 |
 | SQS — la cola de entrega y la DLQ, con su profundidad | http://localhost:9325 |
-| Prometheus — métricas en crudo | http://localhost:9091 |
 
 Las vistas de Kibana están versionadas en
 [`observability/kibana/vistas.ndjson`](../observability/kibana/vistas.ndjson), de modo que no
