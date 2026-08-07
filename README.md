@@ -53,12 +53,7 @@ flowchart LR
     style API fill:#1f6feb,color:#fff
 ```
 
-La flecha indica la dirección del dato. La línea punteada marca el único flujo que ningún
-componente invoca: cuando un mensaje no se confirma tras varias entregas —por ejemplo, uno
-corrupto que nunca llega a procesarse— SQS lo mueve a la DLQ por su *redrive policy*.
-
-Los reintentos agotados son distintos: ahí el worker envía el mensaje a la DLQ de forma
-explícita, con el motivo del descarte.
+La línea punteada es el redrive automático de SQS; el resto son llamadas del componente.
 
 ### Tres componentes desplegables
 
