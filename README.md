@@ -375,14 +375,6 @@ npx newman run postman/cobre-notification-delivery.postman_collection.json
 | **Prometheus** | http://localhost:9091 | Las métricas en crudo |
 | **SQS** | http://localhost:9324 | La cola de entrega y la DLQ |
 
-Los logs, directo de cada servicio:
-
-```bash
-docker compose logs -f worker      # entregas y reintentos
-docker compose logs -f consumer    # ingesta desde el bus
-docker compose logs -f api         # peticiones a la API
-```
-
 ### Apagar
 
 ```bash
