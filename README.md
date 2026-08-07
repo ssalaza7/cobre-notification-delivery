@@ -324,6 +324,14 @@ y 94,6 % de líneas. El build falla si desciende del 90 %.
 
 Requisitos: Docker. Nada más — ni Java ni Gradle instalados.
 
+Todos los comandos se ejecutan desde la raíz del repositorio, la carpeta que contiene
+`docker-compose.yml`:
+
+```bash
+git clone https://github.com/ssalaza7/cobre-notification-delivery.git
+cd cobre-notification-delivery
+```
+
 ```bash
 # 1. Secreto de firma de tokens. Ningún módulo arranca sin él.
 cp .env.example .env
