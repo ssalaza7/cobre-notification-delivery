@@ -25,7 +25,8 @@ flowchart LR
     Q[("SQS<br/>cola de entrega")]
     DLQ[("SQS<br/>DLQ")]
     DB[("DynamoDB<br/>eventos + bitácora")]
-    PG[("PostgreSQL<br/>suscripciones + credenciales")]
+    PG[("DynamoDB<br/>suscripciones")]
+    IDP["Proveedor de identidad<br/>OIDC"]
     CLI["Webhook del cliente"]
     USR["Cliente"]
 
@@ -48,7 +49,8 @@ flowchart LR
     Q -.->|mensaje no confirmado| DLQ
     USR -->|consulta · reenvía| API
     API -->|consulta| DB
-    API -->|suscripciones · credenciales| PG
+    API -->|suscripciones| PG
+    API -->|token| IDP
     API -->|encola reenvío| Q
 
     style CON fill:#1f6feb,color:#fff
@@ -96,10 +98,10 @@ El razonamiento detrás de esta separación está en el [documento de diseño](d
 |---|---|
 | **Dominio** | El modelo y las reglas: estados, transiciones, política de reintentos. Y los puertos |
 | **Aplicación** | Los casos de uso. Orquestan el dominio y los puertos |
-| **Infraestructura** | Los adaptadores: Kafka, SQS, REST, DynamoDB, R2DBC, WebClient, Micrometer |
+| **Infraestructura** | Los adaptadores: Kafka, SQS, REST, DynamoDB, OIDC, WebClient, Micrometer |
 
 Las dependencias apuntan siempre hacia adentro. `DominioSinFrameworkTest` falla el build si el
-dominio importa Spring, R2DBC, Kafka o el SDK de AWS.
+dominio importa Spring, Kafka o el SDK de AWS.
 
 ---
 
@@ -113,7 +115,7 @@ sequenceDiagram
     participant K as Kafka
     participant CON as consumer
     participant DB as DynamoDB
-    participant PG as PostgreSQL
+    participant PG as DynamoDB · suscripciones
     participant Q as SQS
     participant W as worker
     participant C as Webhook del cliente
@@ -195,13 +197,14 @@ Las respuestas 4xx no llegan aquí: se clasifican como fallo permanente y no se 
 sequenceDiagram
     participant U as Cliente
     participant API as api
-    participant PG as PostgreSQL
+    participant IDP as Proveedor OIDC
     participant DB as DynamoDB
     participant Q as SQS
     participant W as worker
 
     U->>API: POST /oauth/token
-    API->>PG: valida la credencial (bcrypt)
+    API->>IDP: reenvia client_credentials
+    IDP-->>API: access_token firmado
     API-->>U: access_token
     U->>API: POST /notification_events/{id}/replay
     API->>DB: valida propiedad y estado failed
@@ -279,8 +282,8 @@ atado al cliente que lo obtuvo, así que el de otro tenant se rechaza con 400.
 
 ### Pruebas
 
-201 pruebas, sin fallos. Cobertura agregada de los cuatro módulos: 92,4 % de instrucciones
-y 92,4 % de líneas. El build falla si desciende del 90 %.
+190 pruebas, sin fallos. Cobertura agregada de los cuatro módulos: 94,5 % de instrucciones
+y 94,6 % de líneas. El build falla si desciende del 90 %.
 
 ---
 
@@ -299,7 +302,6 @@ cd cobre-notification-delivery
 ```bash
 # 1. Secreto de firma de tokens. Ningún módulo arranca sin él.
 cp .env.example .env
-openssl rand -base64 48          # asignar el resultado a JWT_SECRET
 set -a; source .env; set +a
 
 # 2. Todo el entorno: infraestructura, observabilidad y los tres servicios
@@ -330,7 +332,7 @@ npx newman run postman/cobre-notification-delivery.postman_collection.json
 | **Kibana** | http://localhost:5601 | La traza de cada notificación. Vistas: `./scripts/kibana-import.sh` |
 | **Kafka** | http://localhost:8085 | El topic, sus mensajes y el grupo de consumo |
 | **SQS** | http://localhost:9325 | La cola de entrega y la DLQ, con su profundidad |
-| **Base de datos** | http://localhost:8086 | Suscripciones y credenciales en PostgreSQL (`postgres` / `cobre` / `cobre`) |
+| **Identidad** | http://localhost:8087 | Clientes y alcances en Keycloak (`admin` / `admin`) |
 
 ### Empezar de cero
 
@@ -360,11 +362,11 @@ escribiendo a un archivo que ya no existe hasta que se reinician.
 docker compose --profile apps --profile observability down
 ```
 
-Añadiendo `-v` borra también los datos de PostgreSQL y de DynamoDB.
+Añadiendo `-v` borra también los datos de DynamoDB.
 
 ### Puertos
 
-API 8080 · worker 8081 · consumer 8083 · Grafana 3000 · Kibana 5601 · Kafka 8085 · SQS 9325 · base 8086 · DynamoDB 8000
+API 8080 · worker 8081 · consumer 8083 · Grafana 3000 · Kibana 5601 · Kafka 8085 · SQS 9325 · Keycloak 8087 · DynamoDB 8000
 
 El perfil `local` acorta los escalones de reintento para poder verlos completos y admite
 destinos HTTP. En cualquier otro perfil se exige HTTPS y se bloquean las direcciones internas.
@@ -388,7 +390,8 @@ destinos HTTP. En cualquier otro perfil se exige HTTPS y se bloquean las direcci
 | **Kafka como bus, SQS como cola de trabajo** | Solo Kafka | Kafka no tiene retardo por mensaje, y su orden por partición deja que un webhook lento bloquee a los demás clientes | Si el retardo y el reparto sin orden llegaran al bus |
 | **Los tres comparten base de datos** | Cada uno dueño de sus datos, con CQRS | Comparten la máquina de estados; duplicarla daría divergencia, no independencia | Cuando la entrega y la consulta tengan equipos y SLA distintos |
 | **DynamoDB para eventos e intentos** | PostgreSQL para todo | El flujo de entrega solo accede por `event_id` y lista por cliente y fecha; ambas son consultas por clave, y la bitácora crece sin techo | Si hiciera falta agregar o cruzar eventos, que en clave-valor obliga a recorrerlos |
-| **PostgreSQL para suscripciones y credenciales** | Llevarlas también a DynamoDB | Son configuración del cliente, fuera del flujo de entrega, y su unicidad por `(client_id, event_type)` la hace cumplir la base | Si la configuración dejara de caber en un nodo, que no es el caso |
+| **Suscripciones en DynamoDB, en tabla aparte** | Junto a los eventos, o en relacional | Nunca se leen con un evento en la misma consulta, así que compartir tabla no ahorra viajes; y todo acceso parte del `client_id`, que es la clave de partición | Si hiciera falta consultar suscripciones por algo que no sea el cliente |
+| **La identidad la lleva un proveedor OIDC** | Emitir y firmar los tokens aquí | Un servicio de notificaciones no debería custodiar credenciales; delegando, no guarda ningún secreto y valida contra claves públicas rotables | No aplica: administrar identidad es otro contexto |
 | **Paginación por cursor** | Número de página con total | En clave-valor saltar a la página N cuesta leer las N anteriores, y el total exige recorrerlo todo | No aplica: el coste constante es la razón de ser del cursor |
 | **Los tres son reactivos** | La api bloqueante con hilos virtuales | Evita duplicar la capa de persistencia; el worker sí lo necesita, porque espera a terceros lentos | Si la api creciera hasta justificar su propio modelo de datos |
 | **Entrega al menos una vez** | Confirmar antes de procesar | Un duplicado que el cliente descarta cuesta menos que un pago no notificado | No aplica: el estándar en notificaciones de pago |

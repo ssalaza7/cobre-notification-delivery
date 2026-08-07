@@ -6,13 +6,11 @@ import com.cobre.notifications.application.port.in.ManageSubscriptionsUseCase;
 import com.cobre.notifications.application.port.in.QueryNotificationEventsUseCase;
 import com.cobre.notifications.application.port.in.ReplayNotificationEventUseCase;
 import com.cobre.notifications.application.port.out.AccessTokenIssuerPort;
-import com.cobre.notifications.application.port.out.ApiCredentialRepositoryPort;
 import com.cobre.notifications.application.port.out.DeliveryAttemptRepositoryPort;
 import com.cobre.notifications.application.port.out.DeliveryQueuePort;
 import com.cobre.notifications.application.port.out.MetricsPort;
 import com.cobre.notifications.application.port.out.NotificationEventRepositoryPort;
 import com.cobre.notifications.application.port.out.SecretGeneratorPort;
-import com.cobre.notifications.application.port.out.SecretHasherPort;
 import com.cobre.notifications.application.port.out.SubscriptionRepositoryPort;
 import com.cobre.notifications.application.port.out.WebhookUrlPolicyPort;
 import com.cobre.notifications.application.service.GetNotificationEventService;
@@ -23,7 +21,9 @@ import com.cobre.notifications.application.service.ReplayNotificationEventServic
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import com.cobre.notifications.infrastructure.security.OidcAccessTokenIssuer;
 import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.web.reactive.function.client.WebClient;
 
 import java.time.Clock;
 
@@ -67,11 +67,23 @@ public class MonitoringApiConfig {
     }
 
     @Bean
-    IssueAccessTokenUseCase issueAccessTokenUseCase(
-            ApiCredentialRepositoryPort credentials,
-            SecretHasherPort hasher,
-            AccessTokenIssuerPort issuer,
-            MetricsPort metrics) {
-        return new IssueAccessTokenService(credentials, hasher, issuer, metrics);
+    IssueAccessTokenUseCase issueAccessTokenUseCase(AccessTokenIssuerPort issuer, MetricsPort metrics) {
+        return new IssueAccessTokenService(issuer, metrics);
+    }
+
+    /**
+     * Cliente hacia el proveedor de identidad.
+     *
+     * <p>Propio y no el del worker: aquel esta afinado para webhooks de terceros lentos
+     * y no sigue redirecciones, y el proveedor no tiene nada que ver con eso.
+     */
+    @Bean
+    WebClient oidcWebClient() {
+        return WebClient.builder().build();
+    }
+
+    @Bean
+    AccessTokenIssuerPort accessTokenIssuerPort(WebClient oidcWebClient, SecurityProperties properties) {
+        return new OidcAccessTokenIssuer(oidcWebClient, properties);
     }
 }

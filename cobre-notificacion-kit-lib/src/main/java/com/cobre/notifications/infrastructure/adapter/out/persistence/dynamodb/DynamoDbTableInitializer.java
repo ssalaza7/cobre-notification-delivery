@@ -52,23 +52,62 @@ public class DynamoDbTableInitializer implements InitializingBean {
         if (!properties.createTable()) {
             return;
         }
-        String table = properties.tableName();
+        if (crear(properties.tableName(), this::createNotificationsTable)) {
+            enableTtl(properties.tableName());
+        }
+        crear(properties.subscriptionsTableName(), this::createSubscriptionsTable);
+    }
+
+    /**
+     * Crea la tabla si no existe.
+     *
+     * @return {@code true} si la creo esta ejecucion, {@code false} si ya estaba
+     */
+    private boolean crear(String table, CreadorDeTabla creador) throws Exception {
         try {
-            createTable(table);
-            log.info("Tabla {} creada", table);
+            creador.crear(table);
         } catch (Exception e) {
             // La tabla ya existia: es lo normal en cualquier arranque que no sea el
-            // primero, y no hay nada que hacer.
+            // primero, y tambien cuando los tres ejecutables arrancan a la vez.
             if (!(rootCause(e) instanceof ResourceInUseException)) {
                 throw e;
             }
             log.debug("La tabla {} ya existia", table);
-            return;
+            return false;
         }
-        enableTtl(table);
+        log.info("Tabla {} creada", table);
+        return true;
     }
 
-    private void createTable(String table) throws Exception {
+    @FunctionalInterface
+    private interface CreadorDeTabla {
+        void crear(String table) throws Exception;
+    }
+
+    /**
+     * Suscripciones: una particion por cliente y una clave de orden por tipo de evento.
+     *
+     * <p>Sin indices. Toda consulta parte del cliente, que es la clave de particion, y
+     * la unicidad por tipo la garantiza la clave de orden.
+     */
+    private void createSubscriptionsTable(String table) throws Exception {
+        dynamo.createTable(CreateTableRequest.builder()
+                        .tableName(table)
+                        .billingMode(BillingMode.PAY_PER_REQUEST)
+                        .attributeDefinitions(
+                                attribute(SubscriptionTable.PK),
+                                attribute(SubscriptionTable.SK))
+                        .keySchema(
+                                key(SubscriptionTable.PK, KeyType.HASH),
+                                key(SubscriptionTable.SK, KeyType.RANGE))
+                        .build())
+                .get(TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+
+        dynamo.waiter().waitUntilTableExists(request -> request.tableName(table))
+                .get(TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+    }
+
+    private void createNotificationsTable(String table) throws Exception {
         dynamo.createTable(CreateTableRequest.builder()
                         .tableName(table)
                         .billingMode(BillingMode.PAY_PER_REQUEST)

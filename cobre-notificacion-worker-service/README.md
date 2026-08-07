@@ -7,8 +7,7 @@ si se reintenta y cerrar el estado.
 
 ```
 SQS  ──►  worker  ──►  webhook del cliente   (POST firmado con HMAC)
-                  ──►  DynamoDB              (estado + bitácora de intentos)
-                  ──►  PostgreSQL            (suscripción: destino y secreto de firma)
+                  ──►  DynamoDB              (estado, bitácora y suscripción)
                   ──►  SQS                   (reintento con retardo, o DLQ)
 ```
 

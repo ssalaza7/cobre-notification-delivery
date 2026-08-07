@@ -80,7 +80,7 @@ el único endpoint público y, por tanto, el más expuesto:
 
 | Riesgo | Mitigación |
 |---|---|
-| Volcado de la base | El secreto se guarda solo como hash bcrypt |
+| Volcado de la base | El servicio no guarda credenciales: las custodia el proveedor de identidad |
 | Enumeración de clientes | Un único mensaje de error para todos los modos de fallo |
 | Enumeración por temporización | Verificación en vacío cuando el cliente no existe, para igualar tiempos |
 | Fuerza bruta | Límite por dirección de origen, aparte del límite por cliente |
@@ -219,9 +219,9 @@ historial de git de forma permanente aunque se elimine después, y se propaga a 
 
 | Dato | Tratamiento | Motivo |
 |---|---|---|
-| `JWT_SECRET` | Sin valor por defecto; la aplicación no arranca sin él | Firma los tokens: permite emitir tokens de cualquier cliente |
+| Secreto de firma de webhooks | En el ítem de la suscripción; el candidato natural es un almacén de secretos | Permite falsificar notificaciones hacia el cliente |
 | `signing_secret` de webhooks | En base de datos; pendiente de cifrar con KMS | Permite falsificar notificaciones hacia el cliente |
-| Secretos de clientes de API | Solo el hash bcrypt | Un volcado de la base no permite suplantación |
+| Secretos de clientes de API | No se almacenan: el proveedor de identidad los custodia | El servicio no puede filtrar lo que no tiene |
 | Credenciales de los contenedores locales | Valores por defecto en el repositorio | Contenedores desechables sin acceso a nada; en entornos reales provienen del gestor |
 
 **Inyección.** En local, un archivo `.env` no versionado, con `.env.example` como plantilla. En
@@ -230,10 +230,7 @@ permite rotación sin redespliegue, registra cada acceso en CloudTrail, cifra en
 y mantiene el secreto fuera del repositorio y del pipeline. Para configuración no sensible
 basta Parameter Store.
 
-**Credenciales de demostración.** `db/migration` crea la tabla `api_credential` sin sembrar
-filas. Las credenciales de demostración residen en `db/demo`, ruta que solo cargan los perfiles
-`local` y `demo`. En producción las crea el proceso de onboarding: se genera un secreto
-aleatorio, se muestra una única vez y se persiste solo su hash.
+**Credenciales de demostración.** Los tres clientes de ejemplo viven en el realm de Keycloak que levanta docker compose, con sus alcances. Sus secretos son de un entorno local desechable y no valen fuera de él; en producción los administra el proveedor de identidad.
 
 **Pendiente:** cifrar el `signing_secret` con KMS; rotación de la clave de firma con ventana de
 dos claves; escaneo de secretos en CI (`gitleaks`).
@@ -244,7 +241,7 @@ dos claves; escaneo de secretos en CI (`gitleaks`).
 
 **Los errores no filtran información.** El manejador genérico devuelve un identificador de
 correlación y deja el detalle en los logs. Ante
-`IllegalStateException("connection to postgres://cobre:cobre@db:5432 failed")`:
+`IllegalStateException("connection to the identity provider failed")`:
 
 ```json
 {"status":500,"title":"Error interno",

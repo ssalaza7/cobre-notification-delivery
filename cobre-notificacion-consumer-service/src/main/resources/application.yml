@@ -6,27 +6,6 @@ spring:
   application:
     name: notification-delivery-service
 
-  # Credenciales de la base. Los valores por defecto corresponden al contenedor local
-  # desechable que levanta docker-compose y no dan acceso a nada: mantenerlos evita
-  # convertir "clonar y correr" en un ritual. En cualquier entorno real DB_PASSWORD se
-  # inyecta desde el gestor de secretos.
-  r2dbc:
-    url: r2dbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:notifications}
-    username: ${DB_USER:cobre}
-    password: ${DB_PASSWORD:cobre}
-    pool:
-      initial-size: 5
-      max-size: 20
-      max-idle-time: 30m
-
-  # Flyway corre sobre JDBC una unica vez al arrancar; el runtime de la app es 100% R2DBC.
-  flyway:
-    enabled: true
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:notifications}
-    user: ${DB_USER:cobre}
-    password: ${DB_PASSWORD:cobre}
-    locations: classpath:db/migration
-    baseline-on-migrate: true
 
 cobre:
   # Bus de eventos de la plataforma. Aqui solo se consume; publicarlo es de otro equipo.
@@ -44,6 +23,7 @@ cobre:
     # apuntar a DynamoDB Local.
     endpoint: ${DYNAMODB_ENDPOINT:}
     table-name: ${DYNAMODB_TABLE:notifications}
+    subscriptions-table-name: ${DYNAMODB_SUBSCRIPTIONS_TABLE:subscriptions}
     client-index: gsi_client_created
     # Cuanto se conserva la bitacora de intentos. El estado final del evento no caduca.
     attempt-ttl: ${DYNAMODB_ATTEMPT_TTL:90d}

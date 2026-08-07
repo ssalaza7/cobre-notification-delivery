@@ -1,0 +1,75 @@
+{
+  "realm": "cobre",
+  "enabled": true,
+  "accessTokenLifespan": 3600,
+  "clientScopes": [
+    {
+      "name": "notifications:read",
+      "protocol": "openid-connect",
+      "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "false" }
+    },
+    {
+      "name": "notifications:replay",
+      "protocol": "openid-connect",
+      "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "false" }
+    },
+    {
+      "name": "notifications:monitor",
+      "protocol": "openid-connect",
+      "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "false" }
+    },
+    {
+      "name": "subscriptions:manage",
+      "protocol": "openid-connect",
+      "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "false" }
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "CLIENT001",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "secret": "demo-secret-client001",
+      "defaultClientScopes": [
+        "notifications:read",
+        "notifications:replay",
+        "notifications:monitor",
+        "subscriptions:manage"
+      ],
+      "optionalClientScopes": []
+    },
+    {
+      "clientId": "CLIENT002",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "secret": "demo-secret-client002",
+      "defaultClientScopes": [
+        "notifications:read",
+        "notifications:replay",
+        "notifications:monitor",
+        "subscriptions:manage"
+      ],
+      "optionalClientScopes": []
+    },
+    {
+      "clientId": "CLIENT003",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "secret": "demo-secret-client003",
+      "defaultClientScopes": ["notifications:read"],
+      "optionalClientScopes": []
+    }
+  ]
+}

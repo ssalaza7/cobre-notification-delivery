@@ -1,7 +1,5 @@
 # Carga tambien las credenciales de demostracion, que no existen en produccion.
 spring:
-  flyway:
-    locations: classpath:db/migration,classpath:db/demo
 
 # Perfil para la presentacion en vivo.
 #

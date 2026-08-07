@@ -1,22 +1,27 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: cobre-notifications-postgres
-    # Los puertos del host son configurables para poder convivir con otros
-    # contenedores ya levantados: PG_PORT=5433 docker compose up -d
-    ports:
-      - "${PG_PORT:-5432}:5432"
+  # Proveedor de identidad. Emite los tokens y publica las claves con las que la API
+  # verifica su firma. Keycloak habla OIDC igual que Cognito, asi que el codigo es el
+  # mismo que correria en AWS: solo cambian las tres direcciones del emisor.
+  #
+  # El realm se importa del archivo versionado, con los tres clientes de demostracion y
+  # sus alcances. Los secretos que lleva son de un entorno local desechable.
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0.7
+    container_name: cobre-notifications-keycloak
+    command: ["start-dev", "--import-realm"]
     environment:
-      POSTGRES_DB: notifications
-      POSTGRES_USER: cobre
-      POSTGRES_PASSWORD: cobre
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cobre -d notifications"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HTTP_PORT: 8087
+    ports:
+      - "${KEYCLOAK_PORT:-8087}:8087"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - ./observability/keycloak-realm-cobre.json:/opt/keycloak/data/import/realm.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8087 && echo -e 'GET /realms/cobre HTTP/1.1\\nHost: localhost\\n\\n' >&3 && cat <&3 | head -1 | grep -q 200"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
 
   # Almacen de notificaciones e intentos de entrega. La imagen oficial de DynamoDB
   # Local habla la misma API que el servicio, asi que el codigo es identico al que
@@ -152,19 +157,6 @@ services:
   # las imagenes, asi que no debe estar corriendo mientras se presenta.
   #
   #   docker compose --profile evidencia up -d grafana-renderer
-  # Consola de la base: explorar tablas y lanzar consultas desde el navegador.
-  db-console:
-    image: adminer:4.8.1
-    container_name: cobre-notifications-db-console
-    profiles: ["observability"]
-    depends_on:
-      postgres: {condition: service_healthy}
-    environment:
-      ADMINER_DEFAULT_SERVER: postgres
-      ADMINER_DESIGN: dracula
-    ports:
-      - "${DB_CONSOLE_PORT:-8086}:8080"
-
   # Consola de Kafka: topics, particiones, mensajes y grupos de consumo.
   kafka-console:
     image: docker.redpanda.com/redpandadata/console:v2.7.2
@@ -216,14 +208,12 @@ services:
     container_name: cobre-notificaciones-consumer
     profiles: ["apps"]
     depends_on:
-      postgres: {condition: service_healthy}
       dynamodb: {condition: service_started}
+      keycloak: {condition: service_healthy}
       redpanda: {condition: service_healthy}
       elasticmq: {condition: service_started}
     environment: &entorno-comun
       SPRING_PROFILES_ACTIVE: local
-      JWT_SECRET: ${JWT_SECRET:?define JWT_SECRET en .env}
-      DB_HOST: postgres
       # 29092 y no 9092: la escucha externa anuncia localhost, que desde dentro de la
       # red de compose no resuelve al broker.
       KAFKA_BOOTSTRAP: redpanda:29092
@@ -231,6 +221,9 @@ services:
       SQS_DELIVERY_QUEUE: http://elasticmq:9324/000000000000/notifications-delivery
       SQS_DLQ: http://elasticmq:9324/000000000000/notifications-dlq
       DYNAMODB_ENDPOINT: http://dynamodb:8000
+      OIDC_ISSUER_URI: http://keycloak:8087/realms/cobre
+      OIDC_JWK_SET_URI: http://keycloak:8087/realms/cobre/protocol/openid-connect/certs
+      OIDC_TOKEN_URI: http://keycloak:8087/realms/cobre/protocol/openid-connect/token
       LOGGING_FILE_NAME: /app-logs/consumer.json
     volumes:
       # Filebeat lee esta carpeta. Un archivo por servicio: si los tres
@@ -246,8 +239,8 @@ services:
     container_name: cobre-notificaciones-worker
     profiles: ["apps"]
     depends_on:
-      postgres: {condition: service_healthy}
       dynamodb: {condition: service_started}
+      keycloak: {condition: service_healthy}
       elasticmq: {condition: service_started}
     environment:
       <<: *entorno-comun
@@ -273,8 +266,8 @@ services:
     container_name: cobre-notificaciones-api
     profiles: ["apps"]
     depends_on:
-      postgres: {condition: service_healthy}
       dynamodb: {condition: service_started}
+      keycloak: {condition: service_healthy}
       elasticmq: {condition: service_started}
     environment:
       <<: *entorno-comun
@@ -288,5 +281,4 @@ services:
       - "${API_PORT:-8080}:8080"
 
 volumes:
-  postgres-data:
   dynamodb-data:

@@ -2,12 +2,9 @@ package com.cobre.notifications.application.service;
 
 import com.cobre.notifications.application.port.in.IssueAccessTokenUseCase;
 import com.cobre.notifications.application.port.out.AccessTokenIssuerPort;
-import com.cobre.notifications.application.port.out.ApiCredentialRepositoryPort;
 import com.cobre.notifications.application.port.out.MetricsPort;
-import com.cobre.notifications.application.port.out.SecretHasherPort;
 import com.cobre.notifications.domain.exception.InvalidClientCredentialsException;
 import com.cobre.notifications.domain.model.AccessToken;
-import com.cobre.notifications.domain.model.ApiCredential;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
@@ -15,68 +12,49 @@ import reactor.core.publisher.Mono;
 /**
  * Intercambia credenciales de cliente por un token de acceso.
  *
- * <p>Tres decisiones sostienen la seguridad de este caso de uso:
+ * <p>El servicio no guarda credenciales ni firma tokens: reenvia lo presentado al
+ * proveedor de identidad y devuelve lo que conteste. Administrar identidad pertenece a
+ * otro contexto, y no almacenar secretos elimina de raiz la posibilidad de filtrarlos.
  *
- * <p><b>Un solo error para todos los casos.</b> Cliente inexistente, secreto
- * incorrecto o credencial desactivada devuelven exactamente lo mismo. Distinguirlos
- * convertiria el endpoint en un directorio de clientes validos.
+ * <p>El endpoint sigue viviendo aqui, y no se expone el del proveedor, por dos razones:
+ * el cliente integra contra una sola URL y cambiar de proveedor no le rompe nada; y el
+ * limite de tasa, el identificador de peticion y el enmascarado de logs se siguen
+ * aplicando sobre este camino.
  *
- * <p><b>Tiempo de respuesta constante.</b> Si el cliente no existe se ejecuta igual
- * una verificacion en vacio. Sin eso, un cliente inexistente responderia en
- * milisegundos y uno real tardaria lo que tarda el hash: esa diferencia es suficiente
- * para enumerar identificadores validos y convertir un ataque ciego en uno dirigido.
- *
- * <p><b>Los permisos salen de la credencial, no de la peticion.</b> El cliente pide un
- * token; no elige su alcance.
+ * <p><b>Un solo error para todos los casos.</b> Cliente inexistente, secreto incorrecto
+ * o credencial desactivada devuelven exactamente lo mismo. Distinguirlos convertiria el
+ * endpoint en un directorio de clientes validos. La respuesta en tiempo constante, que
+ * antes habia que forzar aqui, ahora la da el proveedor.
  */
 public class IssueAccessTokenService implements IssueAccessTokenUseCase {
 
     private static final Logger log = LoggerFactory.getLogger(IssueAccessTokenService.class);
 
-    private final ApiCredentialRepositoryPort credentials;
-    private final SecretHasherPort hasher;
     private final AccessTokenIssuerPort issuer;
     private final MetricsPort metrics;
 
-    public IssueAccessTokenService(
-            ApiCredentialRepositoryPort credentials,
-            SecretHasherPort hasher,
-            AccessTokenIssuerPort issuer,
-            MetricsPort metrics) {
-        this.credentials = credentials;
-        this.hasher = hasher;
+    public IssueAccessTokenService(AccessTokenIssuerPort issuer, MetricsPort metrics) {
         this.issuer = issuer;
         this.metrics = metrics;
     }
 
     @Override
     public Mono<AccessToken> issue(ClientCredentials request) {
-        return credentials.findActiveByClientId(request.clientId())
-                .flatMap(credential -> verify(credential, request.clientSecret()))
-                // Cliente inexistente o desactivado: se gasta el mismo tiempo igual.
-                .switchIfEmpty(Mono.defer(() -> hasher.matchesNothing().then(Mono.empty())))
-                .switchIfEmpty(Mono.defer(() -> reject(request.clientId())));
-    }
-
-    private Mono<AccessToken> verify(ApiCredential credential, String presentedSecret) {
-        return hasher.matches(presentedSecret, credential.secretHash())
-                .flatMap(matches -> {
-                    if (!matches) {
-                        return Mono.empty();
-                    }
-                    AccessToken token = issuer.issue(credential);
+        return issuer.issue(request.clientId(), request.clientSecret())
+                .doOnNext(token -> {
                     metrics.accessTokenIssued();
                     log.info("Token emitido para el cliente {} con alcance [{}]",
-                            credential.clientId(), credential.scopeClaim());
-                    return Mono.just(token);
-                });
+                            request.clientId(), token.scope());
+                })
+                .onErrorResume(InvalidClientCredentialsException.class,
+                        error -> reject(request.clientId(), error));
     }
 
-    private Mono<AccessToken> reject(String clientId) {
+    private Mono<AccessToken> reject(String clientId, Throwable error) {
         metrics.accessTokenDenied();
         // Se registra el intento fallido para poder alertar por fuerza bruta, pero
         // nunca el secreto presentado.
         log.warn("Intento de autenticacion rechazado para el identificador '{}'", clientId);
-        return Mono.error(new InvalidClientCredentialsException());
+        return Mono.error(error);
     }
 }

@@ -78,7 +78,8 @@ flowchart TB
     end
 
     db[("DynamoDB<br/>notificaciones + intentos")]
-    pg[("PostgreSQL<br/>subscription + api_credential")]
+    pg[("DynamoDB<br/>suscripciones")]
+    idp["Proveedor de identidad<br/>OIDC"]
     hook["Webhook del cliente"]
     obs["Logs y métricas"]
 
@@ -93,7 +94,8 @@ flowchart TB
     worker --> db
     worker -- "suscripción: destino y secreto" --> pg
     api --> db
-    api -- "suscripciones · credenciales" --> pg
+    api -- "suscripciones" --> pg
+    api -- "token" --> idp
     api -- "replay" --> dq
     service -.-> obs
 
@@ -165,8 +167,8 @@ flowchart LR
     end
 
     subgraph out["Adaptadores de salida"]
-        ddb["Persistencia DynamoDB<br/>notificaciones · intentos"]
-        sql["Persistencia R2DBC<br/>suscripciones · credenciales"]
+        ddb["Persistencia DynamoDB<br/>notificaciones · intentos · suscripciones"]
+        idp["Proveedor OIDC<br/>emision y validacion"]
         mq["Cola de trabajo"]
         met["Micrometer"]
         web["WebClient + HMAC + anti-SSRF"]
@@ -183,7 +185,7 @@ flowchart LR
 Las dependencias apuntan siempre hacia el interior. `domain` y `application` no importan
 ninguna clase de Spring; el cableado reside en la clase de configuración de cada ejecutable.
 La regla la verifica `DominioSinFrameworkTest`, que lee los fuentes del dominio y de los puertos
-y falla el build si aparece un import de Spring, R2DBC, Kafka, Micrometer, el SDK de AWS o
+y falla el build si aparece un import de Spring, Kafka, Micrometer, el SDK de AWS o
 Jackson. La consecuencia práctica es que sus pruebas se ejecutan sin contexto de Spring, sin
 base de datos y sin broker.
 
@@ -203,7 +205,7 @@ sequenceDiagram
     participant DB as DynamoDB
     participant Q as Cola de entrega
     participant W as worker
-    participant S as PostgreSQL · suscripciones
+    participant S as DynamoDB · suscripciones
     participant H as Webhook cliente
 
     CON->>K: pide eventos (poll)
@@ -331,29 +333,26 @@ instante salten entre páginas contiguas. El filtro por estado se aplica sobre l
   sistema escriben ahí, y un único ítem concentraría cada escritura del flujo en una partición.
   Se actualizan dentro de la misma transacción que el estado, de modo que no pueden desviarse.
 
-**PostgreSQL — suscripciones y credenciales.** Se quedan en relacional porque son configuración
-del cliente, no parte del flujo de entrega: cambian rara vez, las escribe solo la API
-self-service y sobreviven a todos los eventos. La unicidad de `(client_id, event_type)` entre
-las activas la hace cumplir un índice parcial, y la resolución del destino prioriza la
-suscripción específica sobre el comodín.
+**DynamoDB — suscripciones.** Tabla aparte, no una partición más de la anterior: nunca se
+leen junto a un evento en la misma consulta, así que compartir tabla no ahorraría ningún
+viaje, y los perfiles difieren —los eventos crecen con el tráfico y caducan, las
+suscripciones crecen con el número de clientes y no caducan.
 
-```mermaid
-erDiagram
-    SUBSCRIPTION {
-        uuid id PK
-        varchar client_id
-        varchar event_type "'*' = todos"
-        varchar webhook_url
-        varchar signing_secret
-        boolean active
-    }
-    API_CREDENTIAL {
-        varchar client_id PK
-        varchar secret_hash "bcrypt"
-        varchar scopes
-        boolean active
-    }
-```
+| `pk` | `sk` | Qué es |
+|---|---|---|
+| `CLIENT#{client_id}` | `SUB#{event_type}` | Destino y secreto de firma, o `SUB#*` para todos |
+
+- **Una partición por cliente** deja su listado en una sola consulta, y toda lectura parte
+  del `client_id`, que es justo lo que impide expresar una consulta sin acotar por tenant.
+- **La unicidad por tipo de evento sale de la clave de orden.** En el modelo relacional
+  exigía un índice único parcial sobre las filas activas; aquí no puede haber dos ítems con
+  la misma clave.
+- **El alta conserva el secreto existente** con `if_not_exists`: rotarlo en cada cambio de
+  URL rompería la verificación de firma del cliente sin avisarle.
+
+**Las credenciales ya no se guardan.** El servicio delega la emisión de tokens en un
+proveedor OIDC y solo valida firmas contra sus claves públicas. No custodia ningún secreto,
+que es la forma más simple de no filtrarlo.
 
 **Supuesto documentado.** El archivo `notification_events.json` no incluye fecha de creación,
 solo `delivery_date`. Como la API debe filtrar por fecha de creación del evento, se modela
@@ -362,7 +361,7 @@ solo `delivery_date`. Como la API debe filtrar por fecha de creación del evento
 La carga inicial la escribe `DynamoDbDemoSeeder`, solo en los perfiles `local` y `demo`. Se
 apoya en la misma escritura condicional que la ingesta, de modo que un segundo arranque no
 duplica nada ni descuadra el conteo por estado. Las suscripciones y las credenciales se siguen
-sembrando por migración de Flyway, porque siguen en PostgreSQL.
+sembrando desde el mismo componente, junto a las notificaciones.
 
 ---
 
@@ -406,7 +405,7 @@ El razonamiento se mantiene si el bus resulta ser RabbitMQ, Pub/Sub o SNS: cambi
 de entrada, no la estructura.
 
 **Estado en este repositorio:** las siete propiedades están implementadas sobre Kafka, SQS y
-PostgreSQL, y verificadas en ejecución. En local se apunta a Redpanda, ElasticMQ y DynamoDB Local, que
+y verificadas en ejecución. En local se apunta a Redpanda, ElasticMQ, DynamoDB Local y Keycloak, que
 implementan los mismos protocolos.
 
 ---
@@ -434,7 +433,6 @@ flowchart TB
             api["ECS Fargate · api<br/>autoescala por RPS/CPU"]
             worker["ECS Fargate · worker<br/>autoescala por profundidad de cola"]
             consumer["ECS Fargate · consumer<br/>autoescala por lag del consumer group"]
-            aurora[("Aurora PostgreSQL<br/>suscripciones + credenciales")]
             os[("OpenSearch Service")]
         end
         vpce["VPC Endpoints<br/>SQS · DynamoDB · Secrets Manager · ECR · S3"]
@@ -454,8 +452,6 @@ flowchart TB
     users --> r53 --> waf --> alb --> api
     confluent -- "eventos · PrivateLink" --> consumer
     consumer --> vpce
-    api --> aurora
-    worker --> aurora
     api --> vpce --> sqs
     worker --> vpce
     vpce --> ddb
@@ -486,7 +482,7 @@ propia política de autoescalado y su propio ciclo de despliegue.
 | Redpanda (Kafka local) | Confluent Cloud | Ninguno: mismo protocolo |
 | ElasticMQ (SQS local) | SQS | Ninguno: mismo protocolo |
 | DynamoDB Local | DynamoDB | Ninguno: mismo SDK, solo cambia el endpoint |
-| PostgreSQL en Docker | Aurora PostgreSQL | Ninguno: sigue siendo R2DBC |
+| Keycloak en Docker | Amazon Cognito | Ninguno: los dos hablan OIDC, cambian tres direcciones |
 | Filebeat + Elasticsearch | FireLens → OpenSearch Service | Ninguno: la app escribe ECS a stdout |
 | Prometheus | Datadog Agent (OpenMetrics) | Ninguno: el `MetricsPort` no cambia |
 | Secreto HS256 en properties | Secrets Manager + JWKS del IdP | Solo configuración |
@@ -572,8 +568,8 @@ exactly-once de extremo a extremo sería inexacto.
 1. **CI:** `./gradlew build` en cada PR, con pruebas y umbral de cobertura del 90 %.
 2. **CD:** imagen a ECR y despliegue azul/verde en ECS con sonda sobre
    `/actuator/health/readiness`.
-3. **Migraciones:** Flyway al arrancar, solo para las tablas relacionales; la tabla de DynamoDB
-   la declara la infraestructura. Para cero downtime, cambios de esquema compatibles hacia
+3. **Migraciones:** no hay esquema relacional que migrar. Las tablas de DynamoDB las declara
+   la infraestructura. Para cero downtime, cambios de esquema compatibles hacia
    atrás en dos despliegues (expandir, migrar, contraer).
 4. **Apagado ordenado:** dejar de tomar mensajes, terminar los que están en vuelo y cerrar. Sin
    esto, cada despliegue genera reentregas evitables.

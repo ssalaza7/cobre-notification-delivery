@@ -2,10 +2,6 @@
 #
 # Apunta los webhooks a un receptor HTTP en localhost y acorta los retardos de reintento
 # para poder verlos completos mientras se explican.
-spring:
-  flyway:
-    # Carga tambien las credenciales de demostracion, que no existen en produccion.
-    locations: classpath:db/migration,classpath:db/demo
 
 cobre:
   sqs:

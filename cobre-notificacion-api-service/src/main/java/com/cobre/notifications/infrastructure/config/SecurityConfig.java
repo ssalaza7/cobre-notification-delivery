@@ -8,13 +8,11 @@ import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.SecurityWebFiltersOrder;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
-import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusReactiveJwtDecoder;
 import org.springframework.security.oauth2.jwt.ReactiveJwtDecoder;
 import org.springframework.security.web.server.SecurityWebFilterChain;
 
-import javax.crypto.spec.SecretKeySpec;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 
 /**
@@ -39,10 +37,9 @@ import java.time.Duration;
  * <p><b>Este servicio valida tokens; no los emite.</b> Emitir identidad pertenece a
  * otro contexto: un servicio de notificaciones no deberia administrar credenciales.
  *
- * <p>La clave HS256 compartida es adecuada para esta prueba porque permite correr el
- * proyecto sin desplegar un emisor. El paso natural es validar por JWKS contra un
- * proveedor OIDC -Amazon Cognito en el despliegue propuesto-, que rota claves sin
- * redesplegar y evita que el servicio conozca ningun secreto de firma.
+ * <p>La validacion es por JWKS contra un proveedor OIDC: Amazon Cognito en el despliegue
+ * propuesto, Keycloak en local. El servicio no conoce ningun secreto de firma, y el
+ * proveedor puede rotar sus claves sin que haya que redesplegar.
  */
 @Configuration
 @EnableWebFluxSecurity
@@ -98,39 +95,34 @@ public class SecurityConfig {
                 .build();
     }
 
-    /** Longitud minima de la clave HS256: por debajo del tamano del hash, la fuerza bruta es viable. */
-    private static final int MIN_SECRET_BYTES = 32;
-
+    /**
+     * Verifica la firma con las claves publicas del proveedor.
+     *
+     * <p>Se construye desde el emisor y no solo desde el JWKS para que Spring valide
+     * ademas el claim {@code iss}: sin esa comprobacion, un token bien firmado por otro
+     * proveedor cualquiera seria aceptado.
+     */
     @Bean
     ReactiveJwtDecoder jwtDecoder(SecurityProperties properties) {
-        String configured = properties.jwt().secret();
+        SecurityProperties.Oidc oidc = properties.oidc();
 
-        // Sin valor, o con el marcador sin resolver porque la variable no existe.
-        if (configured == null || configured.isBlank() || configured.startsWith("${")) {
+        if (oidc == null || oidc.issuerUri() == null || oidc.issuerUri().isBlank()) {
             throw new IllegalStateException("""
-                    JWT_SECRET no esta definido.
+                    cobre.security.oidc.issuer-uri no esta definido.
 
-                    No tiene valor por defecto a proposito: un secreto escrito en el \
-                    repositorio queda en el historial de git para siempre y se filtra a \
-                    cualquiera que lo clone.
+                    La API valida los tokens contra un proveedor OIDC y necesita saber \
+                    cual. En local lo levanta docker compose:
 
-                    En local:
-                        cp .env.example .env
-                        openssl rand -base64 48    # pega el resultado en JWT_SECRET
-                        set -a; source .env; set +a
+                        docker compose up -d keycloak
 
-                    En AWS se inyecta desde Secrets Manager.""");
+                    En AWS apunta al grupo de usuarios de Cognito.""");
         }
 
-        byte[] secret = configured.getBytes(StandardCharsets.UTF_8);
-        if (secret.length < MIN_SECRET_BYTES) {
-            throw new IllegalStateException(
-                    "JWT_SECRET tiene " + secret.length + " bytes y necesita al menos "
-                            + MIN_SECRET_BYTES + " para HS256. Genere uno con: openssl rand -base64 48");
-        }
-        return NimbusReactiveJwtDecoder
-                .withSecretKey(new SecretKeySpec(secret, "HmacSHA256"))
-                .macAlgorithm(MacAlgorithm.HS256)
-                .build();
+        NimbusReactiveJwtDecoder decoder = oidc.jwkSetUri() != null && !oidc.jwkSetUri().isBlank()
+                ? NimbusReactiveJwtDecoder.withJwkSetUri(oidc.jwkSetUri()).build()
+                : NimbusReactiveJwtDecoder.withIssuerLocation(oidc.issuerUri()).build();
+
+        decoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(oidc.issuerUri()));
+        return decoder;
     }
 }

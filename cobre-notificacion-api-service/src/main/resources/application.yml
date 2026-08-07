@@ -6,27 +6,6 @@ spring:
   application:
     name: notification-delivery-service
 
-  # Credenciales de la base. Los valores por defecto corresponden al contenedor local
-  # desechable que levanta docker-compose y no dan acceso a nada: mantenerlos evita
-  # convertir "clonar y correr" en un ritual. En cualquier entorno real DB_PASSWORD se
-  # inyecta desde el gestor de secretos.
-  r2dbc:
-    url: r2dbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:notifications}
-    username: ${DB_USER:cobre}
-    password: ${DB_PASSWORD:cobre}
-    pool:
-      initial-size: 5
-      max-size: 20
-      max-idle-time: 30m
-
-  # Flyway corre sobre JDBC una unica vez al arrancar; el runtime de la app es 100% R2DBC.
-  flyway:
-    enabled: true
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:notifications}
-    user: ${DB_USER:cobre}
-    password: ${DB_PASSWORD:cobre}
-    locations: classpath:db/migration
-    baseline-on-migrate: true
 
 cobre:
   # Almacen de notificaciones e intentos de entrega.
@@ -36,6 +15,7 @@ cobre:
     # apuntar a DynamoDB Local.
     endpoint: ${DYNAMODB_ENDPOINT:}
     table-name: ${DYNAMODB_TABLE:notifications}
+    subscriptions-table-name: ${DYNAMODB_SUBSCRIPTIONS_TABLE:subscriptions}
     client-index: gsi_client_created
     # Cuanto se conserva la bitacora de intentos. El estado final del evento no caduca.
     attempt-ttl: ${DYNAMODB_ATTEMPT_TTL:90d}
@@ -57,19 +37,16 @@ cobre:
     visibility-timeout: 60s
 
   security:
-    jwt:
-      # SIN VALOR POR DEFECTO, a proposito. Un secreto escrito en el repositorio queda
-      # en el historial de git para siempre, aunque despues se borre, y se filtra a
-      # cualquiera que clone. La aplicacion falla al arrancar si no se inyecta.
-      #
-      # En local se toma de un archivo .env que no se versiona (ver .env.example).
-      # En AWS se inyecta desde Secrets Manager, que ademas permite rotarlo sin
-      # redesplegar y deja registro de cada acceso en CloudTrail.
-      secret: ${JWT_SECRET}
-      # Vigencia corta: un JWT no se puede revocar sin una lista de revocacion, asi que
-      # la vida breve es el unico control real sobre un token filtrado.
-      token-ttl: 1h
-      issuer: cobre-notification-delivery-service
+    # Proveedor de identidad. El servicio ya no emite ni firma tokens: reenvia el flujo
+    # client_credentials a este emisor y valida las firmas contra sus claves publicas.
+    # Ningun secreto de firma vive en la aplicacion.
+    #
+    # En local lo levanta docker compose (Keycloak). En AWS apunta al grupo de usuarios
+    # de Cognito, que habla el mismo protocolo: solo cambian estas tres direcciones.
+    oidc:
+      issuer-uri: ${OIDC_ISSUER_URI:http://localhost:8087/realms/cobre}
+      jwk-set-uri: ${OIDC_JWK_SET_URI:http://localhost:8087/realms/cobre/protocol/openid-connect/certs}
+      token-uri: ${OIDC_TOKEN_URI:http://localhost:8087/realms/cobre/protocol/openid-connect/token}
     rate-limit:
       enabled: true
       requests-per-minute: 120

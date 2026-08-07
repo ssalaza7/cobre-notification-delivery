@@ -14,6 +14,15 @@ final class AuthenticatedClient {
 
     static final String CLIENT_ID_CLAIM = "client_id";
 
+    /**
+     * Claim alterno del estandar OIDC: la parte autorizada.
+     *
+     * <p>Cognito publica el cliente en {@code client_id} y Keycloak en {@code azp}. Se
+     * aceptan los dos para que el mismo binario valga contra el proveedor de produccion
+     * y contra el que se levanta en local.
+     */
+    private static final String AUTHORIZED_PARTY_CLAIM = "azp";
+
     private AuthenticatedClient() {
     }
 
@@ -22,6 +31,9 @@ final class AuthenticatedClient {
             throw new InvalidBearerTokenException("La peticion no esta autenticada");
         }
         String clientId = jwt.getClaimAsString(CLIENT_ID_CLAIM);
+        if (clientId == null || clientId.isBlank()) {
+            clientId = jwt.getClaimAsString(AUTHORIZED_PARTY_CLAIM);
+        }
         if (clientId == null || clientId.isBlank()) {
             throw new InvalidBearerTokenException("El token no contiene el claim '" + CLIENT_ID_CLAIM + "'");
         }

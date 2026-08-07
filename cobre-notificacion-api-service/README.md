@@ -6,8 +6,8 @@ Es el único módulo con superficie HTTP entrante y, por tanto, el único que ne
 seguridad, emisión de tokens y límite de peticiones.
 
 ```
-cliente  ──►  api  ──►  DynamoDB     (consulta notificaciones y reabre entregas)
-                  └──►  PostgreSQL   (suscripciones y credenciales)
+cliente  ──►  api  ──►  DynamoDB     (notificaciones, intentos y suscripciones)
+                  └──►  Proveedor OIDC (reenvia el token; no guarda credenciales)
                    ──►  SQS          (encola el reenvío)
 ```
 
@@ -32,9 +32,12 @@ administrar suscripciones son scopes distintos.
 Flujo `client_credentials` de OAuth2. Acepta el cuerpo como formulario —la forma del RFC 6749—
 y también como JSON.
 
-Defensas: secreto en hash bcrypt, un único mensaje de error para todos los fallos, tiempo de
-respuesta constante, límite por dirección de origen y vigencia de una hora. El log de acceso
-enmascara los parámetros sensibles.
+El endpoint sigue aquí, pero la emisión la hace un proveedor OIDC: la API reenvía lo
+presentado y devuelve lo que conteste. No guarda credenciales ni firma tokens. Así el cliente
+integra contra una sola URL y cambiar de proveedor no le rompe nada.
+
+Defensas propias: un único mensaje de error para todos los fallos, límite por dirección de
+origen, y enmascarado de los parámetros sensibles en el log de acceso.
 
 ## Reenvío
 
@@ -51,9 +54,10 @@ Publica el conteo de eventos por estado como gauge de Micrometer.
 ```yaml
 cobre:
   security:
-    jwt:
-      secret: ${JWT_SECRET}          # sin valor por defecto: no arranca sin él
-      token-ttl: 1h
+    oidc:
+      issuer-uri: ${OIDC_ISSUER_URI}   # Keycloak en local, Cognito en AWS
+      jwk-set-uri: ${OIDC_JWK_SET_URI}
+      token-uri: ${OIDC_TOKEN_URI}
     rate-limit:
       requests-per-minute: 120
       token-requests-per-minute: 10

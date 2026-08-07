@@ -19,19 +19,6 @@ dependencies {
 
     api("org.springframework.boot:spring-boot-starter-json")
 
-    // Persistencia relacional: suscripciones y credenciales. Es configuracion del
-    // cliente, no parte del flujo de entrega, y se queda en Postgres.
-    api("org.springframework.boot:spring-boot-starter-data-r2dbc")
-    runtimeOnly("org.postgresql:r2dbc-postgresql")
-
-    // Flyway corre sobre JDBC una sola vez al arrancar; el runtime sigue siendo R2DBC.
-    // En Spring Boot 4 su autoconfiguracion vive en un modulo aparte y necesita un
-    // DataSource: sin spring-boot-flyway y el starter JDBC, las migraciones no corren.
-    api("org.springframework.boot:spring-boot-flyway")
-    api("org.springframework.boot:spring-boot-starter-jdbc")
-    api("org.flywaydb:flyway-database-postgresql")
-    runtimeOnly("org.postgresql:postgresql")
-
     // Cola de trabajo: el consumer encola, el worker reencola y la api encola reenvios.
     api(platform("software.amazon.awssdk:bom:${rootProject.extra["awsSdkVersion"]}"))
     api("software.amazon.awssdk:sqs")

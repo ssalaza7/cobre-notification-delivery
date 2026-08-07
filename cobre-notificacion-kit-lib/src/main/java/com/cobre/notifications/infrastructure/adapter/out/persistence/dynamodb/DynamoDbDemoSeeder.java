@@ -1,15 +1,19 @@
 package com.cobre.notifications.infrastructure.adapter.out.persistence.dynamodb;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 import com.cobre.notifications.application.port.out.DeliveryAttemptRepositoryPort;
 import com.cobre.notifications.application.port.out.NotificationEventRepositoryPort;
+import com.cobre.notifications.application.port.out.SubscriptionRepositoryPort;
 import com.cobre.notifications.domain.model.AttemptOutcome;
 import com.cobre.notifications.domain.model.DeliveryAttempt;
 import com.cobre.notifications.domain.model.DeliveryStatus;
 import com.cobre.notifications.domain.model.NotificationEvent;
+import com.cobre.notifications.domain.model.Subscription;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Profile;
@@ -39,6 +43,8 @@ public class DynamoDbDemoSeeder {
 
     private static final String RECURSO = "db/demo/notification-events.json";
 
+    private static final List<String> CLIENTES_DEMO = List.of("CLIENT001", "CLIENT002", "CLIENT003");
+
     /**
      * Supuesto heredado de la siembra original: el archivo entregado no trae fecha de
      * creacion del evento, solo la de entrega. Como la API filtra por fecha de creacion,
@@ -52,14 +58,17 @@ public class DynamoDbDemoSeeder {
 
     private final NotificationEventRepositoryPort events;
     private final DeliveryAttemptRepositoryPort attempts;
+    private final SubscriptionRepositoryPort subscriptions;
     private final ObjectMapper objectMapper;
 
     public DynamoDbDemoSeeder(
             NotificationEventRepositoryPort events,
             DeliveryAttemptRepositoryPort attempts,
+            SubscriptionRepositoryPort subscriptions,
             ObjectMapper objectMapper) {
         this.events = events;
         this.attempts = attempts;
+        this.subscriptions = subscriptions;
         this.objectMapper = objectMapper;
     }
 
@@ -80,6 +89,33 @@ public class DynamoDbDemoSeeder {
                 .block();
 
         log.info("Siembra de demostracion: {} notificaciones nuevas en DynamoDB", sembrados);
+        sembrarSuscripciones();
+    }
+
+    /**
+     * Suscripciones de los clientes de ejemplo, con comodin para todos los tipos.
+     *
+     * <p>Los secretos son fijos y estan en el repositorio a proposito: son de un entorno
+     * local desechable y permiten verificar la firma en una demostracion sin tener que
+     * copiarlos del alta. Ninguno vale fuera de aqui.
+     */
+    private void sembrarSuscripciones() {
+        // Se escribe sin comprobar antes si existe. Consultar y despues escribir no es
+        // atomico, y con los tres ejecutables arrancando a la vez los tres verian la
+        // tabla vacia. La escritura va por clave fija y conserva el secreto con
+        // if_not_exists, asi que repetirla converge al mismo item.
+        long sembradas = Flux.fromIterable(CLIENTES_DEMO)
+                .concatMap(clientId -> subscriptions.save(new Subscription(
+                        UUID.nameUUIDFromBytes(clientId.getBytes(StandardCharsets.UTF_8)),
+                        clientId,
+                        Subscription.ALL_EVENT_TYPES,
+                        "http://localhost:9090/webhooks/" + clientId,
+                        "whsec_" + clientId.toLowerCase() + "_local_dev_secret",
+                        true)))
+                .count()
+                .block();
+
+        log.info("Siembra de demostracion: {} suscripciones aseguradas en DynamoDB", sembradas);
     }
 
     private Mono<Boolean> sembrarEvento(JsonNode nodo) {

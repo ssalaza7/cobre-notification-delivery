@@ -21,7 +21,7 @@ estados.
 `NotificationEventRepositoryPort`, `DeliveryQueuePort`, `MetricsPort`. Son contratos, no
 lógica. Los casos de uso viven en cada servicio, no aquí.
 
-**`infrastructure`** — persistencia DynamoDB y R2DBC, adaptador de la cola SQS, métricas de Micrometer y
+**`infrastructure`** — persistencia DynamoDB, adaptador de la cola SQS, métricas de Micrometer y
 las utilidades de log. Es lo que implementa los puertos.
 
 ## La regla que la sostiene
@@ -34,7 +34,7 @@ DominioSinFrameworkTest
 ```
 
 Lee los fuentes de `domain` y de `application/port` y **falla el build** si encuentra un import
-de Spring, R2DBC, Kafka, Micrometer, el SDK de AWS o Jackson.
+de Spring, Kafka, Micrometer, el SDK de AWS o Jackson.
 
 Reactor queda fuera de la lista: es una librería de composición asíncrona, no un framework.
 
@@ -44,8 +44,7 @@ Lo que necesitan **al menos dos** servicios.
 
 | En el kit | Por qué |
 |---|---|
-| DynamoDB | Los tres leen y escriben las notificaciones y su bitácora |
-| R2DBC | Los tres resuelven suscripciones o credenciales contra PostgreSQL |
+| DynamoDB | Los tres leen y escriben notificaciones, bitácora y suscripciones |
 | Adaptador SQS | El consumer encola, el worker reencola, la api encola reenvíos |
 | Micrometer, MDC, enmascarado | Los tres publican métricas y escriben logs |
 
@@ -54,9 +53,8 @@ Spring Security (solo la api).
 
 ## Migraciones
 
-Las migraciones de Flyway viven en `src/main/resources/db/migration` y ya solo cubren las
-tablas relacionales que quedan. La tabla de DynamoDB la declara la infraestructura; en local
-la crea `DynamoDbTableInitializer` al arrancar. Las credenciales de
+No hay migraciones: las tablas de DynamoDB las declara la infraestructura y en local las crea
+`DynamoDbTableInitializer` al arrancar. Las credenciales de
 demostración están en `db/demo`, que solo cargan los perfiles `local` y `demo`.
 
 ---
