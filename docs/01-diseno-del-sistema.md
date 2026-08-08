@@ -566,12 +566,14 @@ exactly-once de extremo a extremo sería inexacto.
    llegue al servicio.
 3. **Sin pruebas de integración con infraestructura real.** El umbral de cobertura excluye los
    adaptadores de persistencia. Testcontainers los incorporaría.
-4. **Secretos de firma en texto plano en la base.** Deben cifrarse con KMS o moverse a Secrets
-   Manager.
+4. **Secretos de firma en texto plano.** Viven en el ítem de la suscripción. El sitio correcto
+   es Secrets Manager, con permisos separados: la api crea, el worker lee. Obliga además a una
+   caché de vigencia corta, porque hoy la suscripción se lee en cada intento y ahí cada lectura
+   pasaría a ser una llamada facturada.
 5. **La DLQ no dispone de reproceso automático** ni de alarma por profundidad.
-6. **La emisión de tokens es propia del servicio.** Es autocontenida y suficiente para la
-   prueba, pero en producción corresponde a un proveedor de identidad con validación por JWKS y
-   rotación de claves.
+6. **La siembra de demostración corre en los tres ejecutables.** Vive en la librería
+   compartida, así que los tres la ejecutan al arrancar. Es inofensiva —la escritura converge
+   al mismo ítem— pero su sitio es un solo módulo.
 
 ---
 
