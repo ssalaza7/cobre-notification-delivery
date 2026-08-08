@@ -65,35 +65,41 @@ endpoint nuevo nace protegido:
 .anyExchange().denyAll()
 ```
 
-**Validación estricta del token.** Firma HS256 con algoritmo fijado explícitamente —lo que
-descarta el ataque de confusión de algoritmo, incluido `alg: none`—, expiración validada, y
-rechazo del token sin claim `client_id` en lugar de asumir un valor por defecto. El arranque
-falla si el secreto tiene menos de 32 bytes.
+**Validación estricta del token.** La firma se verifica contra las claves públicas que el
+proveedor publica en su JWKS, y el decodificador se construye desde el emisor para que
+también se valide el claim `iss`: sin esa comprobación, un token bien firmado por cualquier
+otro proveedor seria aceptado. Se valida la expiración y se rechaza el token sin claim de
+cliente en lugar de asumir un valor por defecto. El arranque falla si no hay emisor
+configurado.
+
+El servicio no conoce ningún secreto de firma, así que no hay nada que filtrar ni que rotar
+aquí: las claves las rota el proveedor sin redesplegar nada.
 
 Solo `health` e `info` son públicos, por las sondas del orquestador. `/actuator/prometheus`
 exige scope: expuesto entregaría el mapa operativo del sistema.
 
 ### Emisión de tokens
 
-La API emite sus propios tokens con el flujo `client_credentials` en `POST /oauth/token`. Es
-el único endpoint público y, por tanto, el más expuesto:
+La emisión la hace un proveedor de identidad externo —Keycloak en local, Cognito en el
+despliegue propuesto—. La API conserva el endpoint `POST /oauth/token`, reenvía el flujo
+`client_credentials` y devuelve lo que conteste, de modo que quien integra tiene una sola URL
+y cambiar de proveedor no le rompe nada. Es el único endpoint público y, por tanto, el más
+expuesto:
 
 | Riesgo | Mitigación |
 |---|---|
-| Volcado de la base | El servicio no guarda credenciales: las custodia el proveedor de identidad |
+| Volcado de la base | El servicio no guarda credenciales: las custodia el proveedor |
 | Enumeración de clientes | Un único mensaje de error para todos los modos de fallo |
-| Enumeración por temporización | Verificación en vacío cuando el cliente no existe, para igualar tiempos |
-| Fuerza bruta | Límite por dirección de origen, aparte del límite por cliente |
-| Escalada de privilegios | Los scopes salen de la credencial registrada, no de la petición |
+| Enumeración por temporización | La respuesta en tiempo constante la da el proveedor |
+| Fuerza bruta | Límite por dirección de origen antes de reenviar, aparte del límite por cliente |
+| Escalada de privilegios | Los scopes los decide el proveedor; la API no los pide ni los amplía |
 | Secreto en logs y proxies | `POST`, no `GET`; respuesta con `Cache-Control: no-store` |
 | Token filtrado | Vigencia de 1 hora. Un JWT no se revoca sin lista de revocación |
 
-En una plataforma real la emisión correspondería a un servicio de identidad central —Cognito
-en el despliegue propuesto— y la validación pasaría a **JWKS**: el servicio descargaría las
-claves públicas del emisor, que podría rotarlas sin redesplegar, y dejaría de conocer ningún
-secreto de firma. Es un cambio de configuración, no de código.
+El secreto presentado atraviesa el servicio pero no se almacena en ningún sitio: ni en base,
+ni en log —el enmascarado lo tapa antes de escribir— ni en la respuesta. Solo se reenvía.
 
-📁 `api`: `SecurityConfig`, `AuthenticatedClient` · `kit`: `IssueAccessTokenService`
+📁 `api`: `SecurityConfig`, `OidcAccessTokenIssuer`, `AuthenticatedClient` · `kit`: `IssueAccessTokenService`
 
 ---
 
@@ -271,9 +277,8 @@ navegador.
 
 | Prioridad | Acción |
 |---|---|
-| Alta | JWKS contra el IdP en lugar de HS256 con secreto compartido |
 | Alta | Allowlist de dominios verificados por cliente, con pinning de la IP resuelta |
-| Alta | Cifrar los `signing_secret` con KMS o moverlos a Secrets Manager |
+| Alta | Mover los `signing_secret` a Secrets Manager, con caché de vigencia corta en el worker |
 | Alta | Rate limiting en WAF, no en la aplicación |
 | Media | Rotación de secretos de firma con periodo de gracia de dos claves |
 | Media | Bitácora de auditoría de reenvíos |

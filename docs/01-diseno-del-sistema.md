@@ -333,6 +333,19 @@ instante salten entre páginas contiguas. El filtro por estado se aplica sobre l
   sistema escriben ahí, y un único ítem concentraría cada escritura del flujo en una partición.
   Se actualizan dentro de la misma transacción que el estado, de modo que no pueden desviarse.
 
+**Paginación por cursor.** El listado no lleva número de página ni total de elementos. En un
+almacén clave-valor, saltar a la página N obliga a leer las N anteriores, y contar cuántas
+notificaciones cumplen un filtro exige recorrerlas todas: dos costes que crecen con el volumen
+para servir una página que no crece. El cursor apunta directamente a donde terminó la anterior,
+así que todas cuestan lo mismo.
+
+Viaja opaco —es la clave de continuación de DynamoDB, codificada— y al decodificarlo se
+comprueba que su partición sea la del cliente autenticado. Sin esa comprobación, pasar el
+cursor de otro tenant sería una vía para leer sus notificaciones.
+
+A cambio se pierde saltar a una página arbitraria. Para una bitácora que se consulta desde la
+más reciente hacia atrás, no es una operación que nadie pida.
+
 **DynamoDB — suscripciones.** Tabla aparte, no una partición más de la anterior: nunca se
 leen junto a un evento en la misma consulta, así que compartir tabla no ahorraría ningún
 viaje, y los perfiles difieren —los eventos crecen con el tráfico y caducan, las
@@ -485,7 +498,6 @@ propia política de autoescalado y su propio ciclo de despliegue.
 | Keycloak en Docker | Amazon Cognito | Ninguno: los dos hablan OIDC, cambian tres direcciones |
 | Filebeat + Elasticsearch | FireLens → OpenSearch Service | Ninguno: la app escribe ECS a stdout |
 | Prometheus | Datadog Agent (OpenMetrics) | Ninguno: el `MetricsPort` no cambia |
-| Secreto HS256 en properties | Secrets Manager + JWKS del IdP | Solo configuración |
 
 El dominio, los casos de uso y sus pruebas no aparecen en esa tabla. Es el retorno concreto de
 la arquitectura hexagonal, verificable comprobando qué paquetes importan `org.springframework`,

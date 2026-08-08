@@ -91,6 +91,14 @@ SSRF, especialmente relevante aquí porque la URL de destino la define el client
 
 ## Tokens de acceso
 
+El endpoint sigue siendo el de la API, pero quien emite es el proveedor de identidad: la API
+reenvía el flujo `client_credentials` y devuelve lo que conteste. No guarda credenciales ni
+firma tokens. Para quien integra no cambia nada —misma URL, mismo cuerpo, misma respuesta— y
+si mañana se cambia de proveedor, tampoco.
+
+En local el proveedor es Keycloak, que levanta docker compose. En AWS es Cognito: hablan el
+mismo protocolo y solo cambian las direcciones del emisor.
+
 El endpoint admite dos formatos de cuerpo. El primero corresponde al estándar:
 
 ```bash
@@ -106,7 +114,7 @@ TOKEN=$(curl -s -X POST http://localhost:8080/oauth/token \
   | python3 -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
 ```
 
-Credenciales sembradas para demostración:
+Credenciales de demostración, registradas en el realm de Keycloak que importa docker compose:
 
 | client_id | client_secret | scopes |
 |---|---|---|
@@ -115,7 +123,11 @@ Credenciales sembradas para demostración:
 | `CLIENT003` | `demo-secret-client003` | solo read |
 
 `CLIENT003` carece de permiso de reenvío de forma deliberada: la consulta y el reenvío son
-autorizaciones independientes.
+autorizaciones independientes. Los alcances los decide el proveedor a partir de lo que tenga
+registrado para cada cliente; la API no los pide ni los puede ampliar.
+
+Los secretos de arriba valen solo en el entorno local desechable. En producción las
+credenciales las administra el proveedor de identidad y nunca pasan por este servicio.
 
 ### Método POST
 
@@ -138,6 +150,41 @@ GET /notification_events?size=1&client_secret=***&access_token=***
 El nombre del parámetro se conserva de forma intencionada: permite detectar la integración
 defectuosa y notificarla. Un secreto que llega al índice queda replicado en cada copia de
 seguridad y obliga a rotarlo.
+
+---
+
+## Listado de notificaciones
+
+Se pagina por cursor. La primera página va sin parámetro:
+
+```bash
+curl "http://localhost:8080/notification_events?size=20" -H "Authorization: Bearer $TOKEN"
+```
+
+```json
+{
+  "data": [ { "event_id": "EVT008", "delivery_status": "completed" } ],
+  "size": 20,
+  "next_cursor": "c2sJTUVUQQpwawlFVkVOVCNFVlQwMDg…",
+  "has_next": true
+}
+```
+
+Para la siguiente se devuelve el `next_cursor` tal como llegó:
+
+```bash
+curl "http://localhost:8080/notification_events?size=20&cursor=$CURSOR" -H "Authorization: Bearer $TOKEN"
+```
+
+Cuando `has_next` es `false`, no viene `next_cursor` y no queda nada más.
+
+No hay total de elementos: contarlos obligaría a recorrer todas las notificaciones que cumplen
+el filtro, y ese recorrido cuesta más que la página que se está sirviendo.
+
+El cursor es opaco y va atado al cliente que lo obtuvo. Uno de otro cliente, o manipulado, se
+rechaza con 400.
+
+Se combina con los filtros: `created_from`, `created_to` y `delivery_status`.
 
 ---
 
