@@ -1,6 +1,9 @@
 apiVersion: 1
 datasources:
   - name: Prometheus
+    # Uid explicito: el tablero y las reglas de alerta lo referencian por aqui.
+    # Sin el, Grafana genera uno al azar y ambos caian al origen por defecto.
+    uid: cobre-notificaciones
     type: prometheus
     access: proxy
     url: http://prometheus:9090

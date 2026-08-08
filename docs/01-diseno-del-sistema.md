@@ -588,5 +588,7 @@ exactly-once de extremo a extremo sería inexacto.
    atrás en dos despliegues (expandir, migrar, contraer).
 4. **Apagado ordenado:** dejar de tomar mensajes, terminar los que están en vuelo y cerrar. Sin
    esto, cada despliegue genera reentregas evitables.
-5. **Alarmas:** tasa de `failed` sobre el total, profundidad de la DLQ, latencia p99 de los
-   webhooks y lag del grupo de consumo.
+5. **Alarmas:** la tasa de error y el cliente con entregas fallando ya estan provisionadas en
+   Grafana. Quedan por conectar la profundidad de la DLQ -que exige exportar la cola, porque
+   no la publica la aplicacion-, la latencia p99 de los webhooks y el lag del grupo de consumo.
+   A todas les falta el canal de notificacion.

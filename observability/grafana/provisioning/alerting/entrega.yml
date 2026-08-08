@@ -1,0 +1,80 @@
+# Alarmas de guardia. Se aprovisionan desde el repositorio, igual que el tablero:
+# una regla creada a mano en la interfaz se pierde al recrear el contenedor y no
+# se puede revisar en un diff.
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: entrega
+    # No puede llamarse igual que el tablero: Grafana rechaza la carpeta.
+    folder: Alarmas de entrega
+    interval: 1m
+    rules:
+      # Señal de que algo va mal en el sistema, no en un cliente concreto.
+      # Se mide sobre 15 minutos para que un pico aislado no la dispare, y se exige
+      # que se sostenga 5 minutos antes de avisar.
+      - uid: cobre-tasa-de-error
+        title: Tasa de error de entrega alta
+        condition: UMBRAL
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'El {{ $value | printf "%.1f" }} % de las entregas esta fallando'
+          description: >-
+            Mas de una de cada cinco notificaciones termina en fallo. Revisar si es un
+            problema propio -almacen, cola, despliegue reciente- antes de asumir que son
+            los destinos de los clientes.
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: TASA
+            relativeTimeRange: {from: 900, to: 0}
+            datasourceUid: cobre-notificaciones
+            model:
+              refId: TASA
+              instant: true
+              expr: >-
+                100 * sum(increase(cobre_notification_settled_total{status="failed"}[15m]))
+                / clamp_min(sum(increase(cobre_notification_settled_total[15m])), 1)
+          - refId: UMBRAL
+            datasourceUid: __expr__
+            model:
+              refId: UMBRAL
+              type: threshold
+              expression: TASA
+              conditions:
+                - evaluator: {type: gt, params: [20]}
+
+      # Señal de que un destino concreto esta rechazando. No es un fallo propio, pero
+      # guardia quiere saberlo para avisar al cliente antes de que agote sus reintentos.
+      - uid: cobre-cliente-fallando
+        title: Cliente con entregas fallando
+        condition: UMBRAL
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'El webhook de {{ $labels.client_id }} lleva rato rechazando entregas'
+          description: >-
+            Un destino concreto acumula fallos de forma sostenida. Suele ser el servidor
+            del cliente caido o una URL que dejo de existir; conviene avisarle antes de
+            que se agoten los reintentos y las notificaciones queden en fallido.
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: FALLOS
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: cobre-notificaciones
+            model:
+              refId: FALLOS
+              instant: true
+              expr: sum by (client_id) (rate(cobre_notification_client_failures_total[5m]))
+          - refId: UMBRAL
+            datasourceUid: __expr__
+            model:
+              refId: UMBRAL
+              type: threshold
+              expression: FALLOS
+              conditions:
+                - evaluator: {type: gt, params: [0.05]}

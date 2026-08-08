@@ -247,6 +247,17 @@ traza de un evento. Se cargan con `./scripts/kibana-import.sh`.
 
 ![Tablero de Grafana](docs/img/grafana-tablero.png)
 
+Dos alarmas provisionadas desde el repositorio, en la carpeta «Alarmas de entrega»:
+
+| Alarma | Dispara | Severidad |
+|---|---|---|
+| Tasa de error de entrega alta | Más del 20 % fallando, sostenido 5 min | crítica |
+| Cliente con entregas fallando | Un destino concreto rechazando 10 min | aviso |
+
+La primera señala un problema propio; la segunda, un cliente al que conviene avisar antes de
+que se le agoten los reintentos. Falta conectarles un canal de notificación, que depende de
+dónde reciba avisos la guardia.
+
 Paneles: entregadas, fallidas, reintentos exitosos, reintentos agotados, reenvíos manuales,
 errores por código, latencia del webhook, clientes con entregas fallando y timeouts.
 
