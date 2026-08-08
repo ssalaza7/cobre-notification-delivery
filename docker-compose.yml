@@ -99,7 +99,7 @@ services:
       retries: 20
 
   # SQS local. ElasticMQ expone la misma API que SQS; las colas se declaran en su
-  # archivo de configuracion, incluida la redrive policy que alimenta la cola muerta.
+  # archivo de configuracion, incluida la redrive policy que alimenta la DLQ.
   elasticmq:
     image: softwaremill/elasticmq-native:1.6.11
     container_name: cobre-notifications-elasticmq
