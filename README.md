@@ -18,54 +18,15 @@ GET  /subscriptions                    las suscripciones del cliente
 
 ## 1. Arquitectura
 
-```mermaid
-flowchart LR
-    SVC["Servicios de la plataforma<br/>pagos · transferencias · saldos"]
-    K[("Kafka<br/>cobre.platform.events")]
-    IDP["Proveedor de identidad<br/>OIDC"]
+![Arquitectura del servicio](docs/img/arquitectura.svg)
 
-    CON["<b>consumer service</b><br/>ingesta y encola"]
-    API["<b>api rest</b><br/>consulta y reenvío"]
-    W["<b>worker service</b><br/>entrega y reintenta"]
+Ni el bus ni la cola empujan: el `consumer service` y el `worker service` piden con long
+polling, y por eso esas flechas salen de ellos. La punteada es el redrive de SQS —tras cinco
+entregas fallidas mueve el mensaje solo—, la única que no la origina ningún componente.
 
-    Q[("SQS<br/>cola de entrega")]
-    DLQ[("SQS<br/>DLQ")]
+> Editable en [`docs/img/Diagrama arquitectura.drawio`](docs/img/Diagrama%20arquitectura.drawio),
+> con [draw.io](https://app.diagrams.net). El SVG se regenera desde ahí con *File → Export as → SVG*.
 
-    USR["Cliente<br/>consulta y reenvía"]
-    HOOK["Webhook del cliente"]
-
-    DB[("DynamoDB<br/>notificaciones + intentos")]
-    SUB[("DynamoDB<br/>suscripciones")]
-
-    SVC -->|publica| K
-    CON -->|sondea| K
-    USR -->|consulta y reenvía| API
-    API -->|pide el token| IDP
-    W -->|POST firmado HMAC| HOOK
-
-    CON -->|encola| Q
-    API -->|encola el reenvío| Q
-    W -->|sondea y reencola| Q
-    W -->|reintentos agotados| DLQ
-    Q -.->|redrive policy| DLQ
-
-    CON -->|persiste| DB
-    API -->|consulta| DB
-    W -->|estado e intento| DB
-    W -->|resuelve destino| SUB
-    API -->|administra| SUB
-
-    style CON fill:#1f6feb,color:#fff
-    style API fill:#1f6feb,color:#fff
-    style W fill:#1f6feb,color:#fff
-```
-
-Ni el bus ni la cola empujan: el `consumer` y el `worker` piden con long polling, y por eso
-esas flechas salen de ellos. La punteada es el redrive de SQS —tras cinco entregas fallidas
-mueve el mensaje solo—, la única que no la origina ningún componente.
-
-> Versión editable en [`docs/img/Diagrama arquitectura.drawio`](docs/img/Diagrama%20arquitectura.drawio),
-> con la disposición cuidada a mano. Se abre con [draw.io](https://app.diagrams.net).
 
 
 
