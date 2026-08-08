@@ -370,6 +370,7 @@ destinos HTTP. En cualquier otro perfil se exige HTTPS y se bloquean las direcci
 | [Diseño del sistema](docs/01-diseno-del-sistema.md) | Task 1 — escalabilidad, resiliencia, despliegue |
 | [Seguridad OWASP](docs/02-seguridad-owasp.md) | Task 3 — vulnerabilidades identificadas y mitigaciones |
 | [Guía de uso](docs/03-guia-de-uso.md) | Registro de webhooks, tokens, Postman, consolas, receptor de pruebas |
+| [Spec de reconstrucción](docs/04-spec-de-reconstruccion.md) | Qué construir y bajo qué restricciones, para levantarlo desde cero |
 
 ---
 
