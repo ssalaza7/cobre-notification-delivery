@@ -279,15 +279,6 @@ dónde reciba avisos la guardia.
 Paneles: entregadas, fallidas, reintentos exitosos, reintentos agotados, reenvíos manuales,
 errores por código, latencia del webhook, clientes con entregas fallando y timeouts.
 
-### Listado paginado por cursor
-
-```json
-{ "data": [ … ], "size": 20, "next_cursor": "c2sJTUVUQQpwawlFVkVOVCNF…", "has_next": true }
-```
-
-Se devuelve el `next_cursor` tal como llegó para pedir la página siguiente. Los detalles, en
-la [guía de uso](docs/03-guia-de-uso.md#listado-de-notificaciones).
-
 ### Bitácora devuelta por la API
 
 ```json
