@@ -34,11 +34,11 @@
               },
               {
                 "color": "orange",
-                "value": 95
+                "value": 50
               },
               {
                 "color": "green",
-                "value": 99
+                "value": 95
               }
             ]
           }
@@ -80,11 +80,11 @@
               },
               {
                 "color": "orange",
-                "value": 1
+                "value": 5
               },
               {
                 "color": "red",
-                "value": 5
+                "value": 50
               }
             ]
           }
