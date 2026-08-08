@@ -16,7 +16,7 @@ GET  /subscriptions                    las suscripciones del cliente
 
 ---
 
-## 1. Arquitectura
+## 1. Arquitectura de componentes
 
 [![Arquitectura del servicio](docs/img/arquitectura.svg)](docs/img/arquitectura.svg)
 
@@ -56,24 +56,9 @@ Las propiedades exigidas a una y otra, en el [documento de diseño](docs/01-dise
 
 ---
 
-## 2. Arquitectura hexagonal
+## 2. Escenarios
 
-![Arquitectura hexagonal](docs/img/arquitectura-hexagonal.svg)
-
-| Capa | Qué contiene |
-|---|---|
-| **Dominio** | El modelo y las reglas: estados, transiciones, política de reintentos. Y los puertos |
-| **Aplicación** | Los casos de uso. Orquestan el dominio y los puertos |
-| **Infraestructura** | Los adaptadores: Kafka, SQS, REST, DynamoDB, OIDC, WebClient, Micrometer |
-
-Las dependencias apuntan siempre hacia adentro. `DominioSinFrameworkTest` falla el build si el
-dominio importa Spring, Kafka o el SDK de AWS.
-
----
-
-## 3. Escenarios
-
-### 3.1 Entrega exitosa
+### 2.1 Entrega exitosa
 
 ```mermaid
 sequenceDiagram
@@ -105,7 +90,7 @@ Entrega **al menos una vez**: el offset del bus se confirma tras persistir y el 
 se borra tras entregar. La ingesta es idempotente por `event_id` y cada entrega lleva la
 cabecera `X-Cobre-Event-Id` para que el receptor descarte repeticiones.
 
-### 3.2 Entrega recuperada tras reintentos
+### 2.2 Entrega recuperada tras reintentos
 
 ```mermaid
 sequenceDiagram
@@ -131,7 +116,7 @@ sequenceDiagram
 Escalones de espera: **5s · 30s · 2m · 10m · 15m**, cada uno con un componente aleatorio
 (*jitter*) de hasta el 20 %.
 
-### 3.3 Reintentos agotados
+### 2.3 Reintentos agotados
 
 ```mermaid
 sequenceDiagram
@@ -163,7 +148,7 @@ de nuestro lado.
 
 Las respuestas 4xx no llegan aquí: se clasifican como fallo permanente y no se reintentan.
 
-### 3.4 La cola de mensajes no entregados
+### 2.4 La cola de mensajes no entregados
 
 Guarda contingencias técnicas, no fallos de negocio. Un webhook caído, un 4xx o una suscripción
 inexistente terminan en la base como `failed` o `discarded`, con su bitácora y disponibles para
@@ -184,7 +169,7 @@ El riesgo es no mirarla: los mensajes caducan, y un evento cuyo mensaje expiró 
 
 ---
 
-### 3.5 Reenvío manual
+### 2.5 Reenvío manual
 
 ```mermaid
 sequenceDiagram
@@ -210,6 +195,21 @@ sequenceDiagram
 
 Responde **202**: la solicitud queda encolada. La bitácora es de solo adición, así que el
 reenvío conserva los intentos del ciclo anterior.
+
+---
+
+## 3. Arquitectura hexagonal
+
+![Arquitectura hexagonal](docs/img/arquitectura-hexagonal.svg)
+
+| Capa | Qué contiene |
+|---|---|
+| **Dominio** | El modelo y las reglas: estados, transiciones, política de reintentos. Y los puertos |
+| **Aplicación** | Los casos de uso. Orquestan el dominio y los puertos |
+| **Infraestructura** | Los adaptadores: Kafka, SQS, REST, DynamoDB, OIDC, WebClient, Micrometer |
+
+Las dependencias apuntan siempre hacia adentro. `DominioSinFrameworkTest` falla el build si el
+dominio importa Spring, Kafka o el SDK de AWS.
 
 ---
 
