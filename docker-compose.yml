@@ -162,6 +162,22 @@ services:
   # las imagenes, asi que no debe estar corriendo mientras se presenta.
   #
   #   docker compose --profile evidencia up -d grafana-renderer
+  # Consola de DynamoDB: explorar las tablas y sus items desde el navegador.
+  # Ocupa el lugar que tenia Adminer cuando la persistencia era relacional.
+  db-console:
+    image: aaronshaf/dynamodb-admin:4.6.1
+    container_name: cobre-notifications-db-console
+    profiles: ["observability"]
+    depends_on:
+      dynamodb: {condition: service_started}
+    environment:
+      DYNAMO_ENDPOINT: http://dynamodb:8000
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: local
+      AWS_SECRET_ACCESS_KEY: local
+    ports:
+      - "${DB_CONSOLE_PORT:-8086}:8001"
+
   # Consola de Kafka: topics, particiones, mensajes y grupos de consumo.
   kafka-console:
     image: docker.redpanda.com/redpandadata/console:v2.7.2

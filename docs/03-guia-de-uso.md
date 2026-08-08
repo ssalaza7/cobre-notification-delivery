@@ -279,6 +279,7 @@ que Prometheus pueda raspar sus métricas.
 | Kibana — las vistas se cargan con `./scripts/kibana-import.sh` | http://localhost:5601 |
 | Kafka — el topic, sus mensajes y el grupo de consumo | http://localhost:8085 |
 | SQS — la cola de entrega y la DLQ, con su profundidad | http://localhost:9325 |
+| Base de datos — las dos tablas de DynamoDB, sus ítems y sus claves | http://localhost:8086 |
 | Identidad — Keycloak, usuario y clave `admin`. Contiene los clientes y sus alcances | http://localhost:8087 |
 
 Las vistas de Kibana están versionadas en
