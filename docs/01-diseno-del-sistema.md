@@ -352,15 +352,19 @@ suscripciones crecen con el número de clientes y no caducan.
 
 | `pk` | `sk` | Qué es |
 |---|---|---|
-| `CLIENT#{client_id}` | `SUB#{event_type}` | Destino y secreto de firma, o `SUB#*` para todos |
+| `CLIENT#{client_id}` | `SUB#{event_type}` | Destino y referencia a su secreto, o `SUB#*` para todos |
 
 - **Una partición por cliente** deja su listado en una sola consulta, y toda lectura parte
   del `client_id`, que es justo lo que impide expresar una consulta sin acotar por tenant.
 - **La unicidad por tipo de evento sale de la clave de orden.** En el modelo relacional
   exigía un índice único parcial sobre las filas activas; aquí no puede haber dos ítems con
   la misma clave.
-- **El alta conserva el secreto existente** con `if_not_exists`: rotarlo en cada cambio de
-  URL rompería la verificación de firma del cliente sin avisarle.
+- **El alta conserva el secreto existente**: rotarlo en cada cambio de URL rompería la
+  verificación de firma del cliente sin avisarle.
+- **El secreto no está aquí.** El ítem guarda una referencia y el valor vive en un almacén de
+  secretos, tras un permiso distinto: quien pueda leer esta tabla sabe a dónde se entrega, pero
+  no puede firmar. El adaptador compone la suscripción leyendo de los dos sitios, así que el
+  dominio no se entera.
 
 **Las credenciales ya no se guardan.** El servicio delega la emisión de tokens en un
 proveedor OIDC y solo valida firmas contra sus claves públicas. No custodia ningún secreto,

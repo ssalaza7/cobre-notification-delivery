@@ -8,6 +8,7 @@ import java.util.UUID;
 
 import com.cobre.notifications.application.port.out.DeliveryAttemptRepositoryPort;
 import com.cobre.notifications.application.port.out.NotificationEventRepositoryPort;
+import com.cobre.notifications.application.port.out.SigningSecretStorePort;
 import com.cobre.notifications.application.port.out.SubscriptionRepositoryPort;
 import com.cobre.notifications.domain.model.AttemptOutcome;
 import com.cobre.notifications.domain.model.DeliveryAttempt;
@@ -27,9 +28,9 @@ import tools.jackson.databind.JsonNode;
 /**
  * Siembra las notificaciones de ejemplo entregadas con la prueba.
  *
- * <p>Ocupa el lugar que tenia la migracion de Flyway para estas filas: las suscripciones
- * y las credenciales siguen sembrandose por SQL, porque siguen en Postgres, y solo los
- * eventos y su bitacora se escriben aqui.
+ * <p>Ocupa el lugar que tenia la migracion de Flyway: los eventos, su bitacora y las
+ * suscripciones de ejemplo. Las credenciales no, que las custodia el proveedor de
+ * identidad.
  *
  * <p>Solo en los perfiles de demostracion. Se apoya en la escritura condicional del
  * repositorio, de modo que un segundo arranque no duplica nada ni descuadra el conteo
@@ -59,16 +60,19 @@ public class DynamoDbDemoSeeder {
     private final NotificationEventRepositoryPort events;
     private final DeliveryAttemptRepositoryPort attempts;
     private final SubscriptionRepositoryPort subscriptions;
+    private final SigningSecretStorePort secretos;
     private final ObjectMapper objectMapper;
 
     public DynamoDbDemoSeeder(
             NotificationEventRepositoryPort events,
             DeliveryAttemptRepositoryPort attempts,
             SubscriptionRepositoryPort subscriptions,
+            SigningSecretStorePort secretos,
             ObjectMapper objectMapper) {
         this.events = events;
         this.attempts = attempts;
         this.subscriptions = subscriptions;
+        this.secretos = secretos;
         this.objectMapper = objectMapper;
     }
 
@@ -108,6 +112,13 @@ public class DynamoDbDemoSeeder {
         // arrancando a la vez pueden sembrar la misma. Es inofensivo: escriben el mismo
         // valor sobre la misma clave. Sobrescribir lo que registro un cliente, no.
         long sembradas = Flux.fromIterable(CLIENTES_DEMO)
+                // El secreto primero, y siempre: el emulador local no conserva nada entre
+                // arranques, mientras que la tabla si tiene volumen. Sin esto, un
+                // `down` y un `up` dejarian la suscripcion apuntando a un secreto que ya
+                // no existe -invisible para la consulta, y por tanto resembrada encima
+                // de la URL que hubiera registrado el cliente-. Conserva el valor si ya
+                // esta, asi que repetirlo no rota nada.
+                .concatMap(clientId -> secretoDemo(clientId).thenReturn(clientId))
                 .concatMap(clientId -> subscriptions.findActiveFor(clientId, Subscription.ALL_EVENT_TYPES)
                         .hasElement()
                         .flatMap(existe -> existe
@@ -117,7 +128,7 @@ public class DynamoDbDemoSeeder {
                                                 clientId,
                                                 Subscription.ALL_EVENT_TYPES,
                                                 "http://localhost:9090/webhooks/" + clientId,
-                                                "whsec_" + clientId.toLowerCase() + "_local_dev_secret",
+                                                secretoDe(clientId),
                                                 true))
                                         .thenReturn(true)))
                 .filter(Boolean::booleanValue)
@@ -125,6 +136,15 @@ public class DynamoDbDemoSeeder {
                 .block();
 
         log.info("Siembra de demostracion: {} suscripciones nuevas en DynamoDB", sembradas);
+    }
+
+    private Mono<String> secretoDemo(String clientId) {
+        return secretos.store(clientId, Subscription.ALL_EVENT_TYPES, secretoDe(clientId));
+    }
+
+    /** Fijo y derivado del cliente: sin esto no se podria verificar la firma en una demostracion. */
+    private String secretoDe(String clientId) {
+        return "whsec_" + clientId.toLowerCase() + "_local_dev_secret";
     }
 
     private Mono<Boolean> sembrarEvento(JsonNode nodo) {
