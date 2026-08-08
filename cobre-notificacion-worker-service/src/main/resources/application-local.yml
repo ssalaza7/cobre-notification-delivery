@@ -20,15 +20,15 @@ cobre:
     block-internal-addresses: false
 
   retry:
-    # Tres intentos en cinco minutos. El primer escalon es de un minuto a proposito: es
+    # Tres intentos en tres minutos. El primer escalon es de un minuto a proposito: es
     # la ventana para cambiar la respuesta del destino de 503 a 200 y ver una entrega
     # recuperada. Con escalones de segundos no daba tiempo a hacerlo.
     #
     # Tres intentos usan dos esperas: despues del ultimo no hay nada que esperar. El
-    # segundo escalon cuadruplica al primero, asi que una espera con jitter nunca
-    # alcanza a la siguiente.
+    # segundo escalon dobla al primero, asi que una espera con jitter -hasta un 20 % mas-
+    # nunca alcanza a la siguiente.
     max-attempts: 3
-    delays: 60s, 4m
+    delays: 60s, 2m
 
 
 logging:
