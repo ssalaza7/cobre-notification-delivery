@@ -592,3 +592,25 @@ exactly-once de extremo a extremo sería inexacto.
    Grafana. Quedan por conectar la profundidad de la DLQ -que exige exportar la cola, porque
    no la publica la aplicacion-, la latencia p99 de los webhooks y el lag del grupo de consumo.
    A todas les falta el canal de notificacion.
+
+---
+
+## 14. Trade-offs
+
+| Decisión | Alternativa | Por qué esta | Cuándo se revisaría |
+|---|---|---|---|
+| **Kafka como bus, SQS como cola de trabajo** | Solo Kafka | Kafka no tiene retardo por mensaje, y su orden por partición deja que un webhook lento bloquee a los demás clientes | Si el retardo y el reparto sin orden llegaran al bus |
+| **Los tres comparten base de datos** | Cada uno dueño de sus datos, con CQRS | Comparten la máquina de estados; duplicarla daría divergencia, no independencia | Cuando la entrega y la consulta tengan equipos y SLA distintos |
+| **DynamoDB para eventos e intentos** | PostgreSQL para todo | El flujo de entrega solo accede por `event_id` y lista por cliente y fecha; ambas son consultas por clave, y la bitácora crece sin techo | Si hiciera falta agregar o cruzar eventos, que en clave-valor obliga a recorrerlos |
+| **Suscripciones en DynamoDB, en tabla aparte** | Junto a los eventos, o en relacional | Nunca se leen con un evento en la misma consulta, así que compartir tabla no ahorra viajes; y todo acceso parte del `client_id`, que es la clave de partición | Si hiciera falta consultar suscripciones por algo que no sea el cliente |
+| **La identidad la lleva un proveedor OIDC** | Emitir y firmar los tokens aquí | Un servicio de notificaciones no debería custodiar credenciales; delegando, no guarda ningún secreto y valida contra claves públicas rotables | No aplica: administrar identidad es otro contexto |
+| **Paginación por cursor** | Número de página con total | En clave-valor saltar a la página N cuesta leer las N anteriores, y el total exige recorrerlo todo | No aplica: el coste constante es la razón de ser del cursor |
+| **Los tres son reactivos** | La api bloqueante con hilos virtuales | Evita duplicar la capa de persistencia; el worker sí lo necesita, porque espera a terceros lentos | Si la api creciera hasta justificar su propio modelo de datos |
+| **Entrega al menos una vez** | Confirmar antes de procesar | Un duplicado que el cliente descarta cuesta menos que un pago no notificado | No aplica: el estándar en notificaciones de pago |
+| **Anti-SSRF por lista negra** | Allowlist de dominios verificados por cliente | Suficiente para la prueba; la allowlist exige verificación de dominio y fijar la IP resuelta | Antes de exponerlo a clientes reales |
+| **Límite de tasa en la aplicación** | WAF en el borde | Sin infraestructura adicional | En AWS, donde el control pertenece al WAF |
+| **Un repositorio con los cinco módulos** | Repositorios separados con las librerías publicadas | Evita el ciclo de publicación en cada cambio del dominio | Si los componentes tuvieran equipos distintos |
+| **El ciclo de reenvío se deduce de `replay_count`** | Registrar el origen y el autor de cada ciclo | No hace falta ningún campo ni escritura extra: solo el reenvío manual incrementa ese contador | Cuando haga falta auditoría de quién reenvió y cuándo, o si algo automático llegara a abrir un ciclo |
+
+---
+

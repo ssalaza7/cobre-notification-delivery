@@ -20,14 +20,11 @@ GET  /subscriptions                    las suscripciones del cliente
 
 [![Arquitectura del servicio](docs/img/arquitectura.svg)](docs/img/arquitectura.svg)
 
-<sub>El lienzo mide 2012 px y GitHub lo encoge al ancho de la columna. Clic en el diagrama para abrirlo a tamaño completo.</sub>
-
 Ni el bus ni la cola empujan: el `consumer service` y el `worker service` piden con long
 polling, y por eso esas flechas salen de ellos. La punteada es el redrive de SQS —tras cinco
 entregas fallidas mueve el mensaje solo—, la única que no la origina ningún componente.
 
-> Editable en [`docs/img/Diagrama arquitectura.drawio`](docs/img/Diagrama%20arquitectura.drawio),
-> con [draw.io](https://app.diagrams.net). El SVG se regenera desde ahí con *File → Export as → SVG*.
+> Editable en [`docs/img/Diagrama arquitectura.drawio`](docs/img/Diagrama%20arquitectura.drawio).
 
 
 
@@ -191,7 +188,40 @@ de nuestro lado.
 
 Las respuestas 4xx no llegan aquí: se clasifican como fallo permanente y no se reintentan.
 
-### 3.4 Reenvío manual
+### 3.4 La cola de mensajes no entregados
+
+Está para contingencias técnicas, no para fallos de negocio. Esa distinción es lo que la hace
+útil.
+
+Un webhook caído, un 4xx del cliente o una suscripción inexistente **no llegan ahí**: terminan
+en la base como `failed` o `discarded`, con su bitácora, y el cliente puede reenviarlos. Son
+desenlaces normales de un sistema que funciona.
+
+A la DLQ solo se llega cuando el worker **no pudo procesar el mensaje**: viene corrupto y no
+deserializa, el almacén no responde, un error inesperado, o el proceso muere a mitad
+repetidamente. En esos casos el mensaje no se confirma, SQS lo reentrega, y tras cinco
+entregas lo aparta solo. Es la protección contra mensajes envenenados: sin ella uno de esos
+daría vueltas para siempre consumiendo capacidad del worker.
+
+De ahí que su profundidad sea una alarma limpia: **cualquier mensaje ahí significa un fallo
+propio**. Si también recogiera clientes con el servidor apagado, crecería un martes cualquiera
+y no significaría nada.
+
+Un caso se excluye a propósito: si el mensaje apunta a un evento que no existe, el listener lo
+confirma y deja constancia en el log. Reintentarlo no lo arreglaría.
+
+**Qué hacer cuando aparezca algo.** Devolverlo es una decisión humana, no automática: si la
+causa sigue sin arreglar, los mensajes vuelven a fallar y regresan, en bucle. Primero se
+arregla, después se devuelven —en AWS con `start-message-move-task`—. Hacerlo es seguro,
+porque el mensaje solo lleva el identificador: el worker relee el evento y, si ya se cerró
+entretanto, confirma sin volver a llamar al webhook.
+
+El riesgo es no mirarla. Los mensajes de SQS caducan, así que un evento cuyo mensaje expiró se
+queda en `pending` sin que nada avise, y la única señal sería un backlog que no baja.
+
+---
+
+### 3.5 Reenvío manual
 
 ```mermaid
 sequenceDiagram
@@ -264,18 +294,11 @@ errores por código, latencia del webhook, clientes con entregas fallando y time
 ### Listado paginado por cursor
 
 ```json
-{
-  "data": [ { "event_id": "EVT008", "delivery_status": "completed" } ],
-  "size": 20,
-  "next_cursor": "c2sJTUVUQQpwawlFVkVOVCNFVlQwMDg…",
-  "has_next": true
-}
+{ "data": [ … ], "size": 20, "next_cursor": "c2sJTUVUQQpwawlFVkVOVCNF…", "has_next": true }
 ```
 
-La primera página se pide sin `cursor`; para la siguiente se devuelve el `next_cursor` tal
-como llegó. No hay total de elementos: contarlos exige recorrer todas las notificaciones que
-cumplen el filtro, y ese recorrido costaría más que la propia página. El cursor es opaco y va
-atado al cliente que lo obtuvo, así que el de otro tenant se rechaza con 400.
+Se devuelve el `next_cursor` tal como llegó para pedir la página siguiente. Los detalles, en
+la [guía de uso](docs/03-guia-de-uso.md#listado-de-notificaciones).
 
 ### Bitácora devuelta por la API
 
@@ -311,11 +334,11 @@ cd cobre-notification-delivery
 ```
 
 ```bash
-# 1. Secreto de firma de tokens. Ningún módulo arranca sin él.
+# 1. Variables de entorno. La plantilla trae valores validos para local.
 cp .env.example .env
 set -a; source .env; set +a
 
-# 2. Todo el entorno: infraestructura, observabilidad y los tres servicios
+# 2. Todo: infraestructura, los tres servicios, observabilidad y consolas
 docker compose --profile apps --profile observability up -d --build
 ```
 
@@ -327,7 +350,8 @@ docker compose --profile apps --profile observability ps      # qué está arrib
 
 ### Probar
 
-Importar [la colección de Postman](postman/) y ejecutarla de arriba abajo. Crea su propio
+La API queda en **http://localhost:8080**. Importar
+[la colección de Postman](postman/) y ejecutarla de arriba abajo. Crea su propio
 destino en webhook.site, registra el webhook, publica eventos y consulta el resultado. No hay
 que preparar nada.
 
@@ -356,29 +380,33 @@ anteriores. Logs y métricas viven en sistemas distintos, así que hay que limpi
 docker compose --profile apps stop consumer worker api
 docker compose --profile observability stop filebeat
 
-# 2. Borrar: indice de Elasticsearch, archivos locales, historial de Prometheus
+# 2. Borrar logs: indice de Elasticsearch, archivos locales, historial de Prometheus
 curl -X DELETE "http://localhost:9200/_data_stream/cobre-notifications*"
 rm -f logs/*
 docker compose --profile observability rm -sf filebeat prometheus
 
-# 3. Levantar de nuevo
+# 3. Borrar datos: notificaciones, suscripciones y colas
+docker compose rm -sfv dynamodb elasticmq
+
+# 4. Levantar de nuevo. Las tablas se recrean y se siembran solas
 docker compose --profile apps --profile observability up -d
 ```
 
 El orden importa: borrar los archivos con los servicios corriendo no los cierra, y siguen
 escribiendo a un archivo que ya no existe hasta que se reinician.
 
+Para dejarlo todo en blanco de una vez, incluidos los clientes de identidad, basta con
+`down -v` y volver a levantar.
+
 ### Apagar
 
 ```bash
+# Detener, conservando los datos
 docker compose --profile apps --profile observability down
+
+# Detener y borrar tambien DynamoDB, las colas y el realm de identidad
+docker compose --profile apps --profile observability down -v
 ```
-
-Añadiendo `-v` borra también los datos de DynamoDB.
-
-### Puertos
-
-API 8080 · worker 8081 · consumer 8083 · Grafana 3000 · Kibana 5601 · Kafka 8085 · SQS 9325 · Keycloak 8087 · DynamoDB 8000 · base 8086
 
 El perfil `local` acorta los escalones de reintento para poder verlos completos y admite
 destinos HTTP. En cualquier otro perfil se exige HTTPS y se bloquean las direcciones internas.
@@ -398,19 +426,14 @@ destinos HTTP. En cualquier otro perfil se exige HTTPS y se bloquean las direcci
 
 ## 7. Trade-offs
 
-| Decisión | Alternativa | Por qué esta | Cuándo se revisaría |
-|---|---|---|---|
-| **Kafka como bus, SQS como cola de trabajo** | Solo Kafka | Kafka no tiene retardo por mensaje, y su orden por partición deja que un webhook lento bloquee a los demás clientes | Si el retardo y el reparto sin orden llegaran al bus |
-| **Los tres comparten base de datos** | Cada uno dueño de sus datos, con CQRS | Comparten la máquina de estados; duplicarla daría divergencia, no independencia | Cuando la entrega y la consulta tengan equipos y SLA distintos |
-| **DynamoDB para eventos e intentos** | PostgreSQL para todo | El flujo de entrega solo accede por `event_id` y lista por cliente y fecha; ambas son consultas por clave, y la bitácora crece sin techo | Si hiciera falta agregar o cruzar eventos, que en clave-valor obliga a recorrerlos |
-| **Suscripciones en DynamoDB, en tabla aparte** | Junto a los eventos, o en relacional | Nunca se leen con un evento en la misma consulta, así que compartir tabla no ahorra viajes; y todo acceso parte del `client_id`, que es la clave de partición | Si hiciera falta consultar suscripciones por algo que no sea el cliente |
-| **La identidad la lleva un proveedor OIDC** | Emitir y firmar los tokens aquí | Un servicio de notificaciones no debería custodiar credenciales; delegando, no guarda ningún secreto y valida contra claves públicas rotables | No aplica: administrar identidad es otro contexto |
-| **Paginación por cursor** | Número de página con total | En clave-valor saltar a la página N cuesta leer las N anteriores, y el total exige recorrerlo todo | No aplica: el coste constante es la razón de ser del cursor |
-| **Los tres son reactivos** | La api bloqueante con hilos virtuales | Evita duplicar la capa de persistencia; el worker sí lo necesita, porque espera a terceros lentos | Si la api creciera hasta justificar su propio modelo de datos |
-| **Entrega al menos una vez** | Confirmar antes de procesar | Un duplicado que el cliente descarta cuesta menos que un pago no notificado | No aplica: el estándar en notificaciones de pago |
-| **Anti-SSRF por lista negra** | Allowlist de dominios verificados por cliente | Suficiente para la prueba; la allowlist exige verificación de dominio y fijar la IP resuelta | Antes de exponerlo a clientes reales |
-| **Límite de tasa en la aplicación** | WAF en el borde | Sin infraestructura adicional | En AWS, donde el control pertenece al WAF |
-| **Un repositorio con los cinco módulos** | Repositorios separados con las librerías publicadas | Evita el ciclo de publicación en cada cambio del dominio | Si los componentes tuvieran equipos distintos |
+Los tres que más definen el sistema. El resto, con su alternativa y cuándo se revisaría, en el
+[documento de diseño](docs/01-diseno-del-sistema.md#14-trade-offs).
+
+| Decisión | Alternativa | Por qué esta |
+|---|---|---|
+| **Kafka como bus, SQS como cola de trabajo** | Solo Kafka | Kafka no tiene retardo por mensaje, y su orden por partición deja que un webhook lento bloquee a los demás clientes |
+| **DynamoDB para eventos e intentos** | PostgreSQL para todo | El flujo solo accede por `event_id` y lista por cliente y fecha: ambas son consultas por clave, y la bitácora crece sin techo |
+| **Entrega al menos una vez** | Confirmar antes de procesar | Un duplicado que el cliente descarta cuesta menos que un pago no notificado |
 
 ---
 
