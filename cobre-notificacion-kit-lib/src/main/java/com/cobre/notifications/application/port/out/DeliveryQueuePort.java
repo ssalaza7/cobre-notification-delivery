@@ -23,7 +23,4 @@ public interface DeliveryQueuePort {
 
     /** Encola un reintento que solo debe hacerse visible despues de {@code delay}. */
     Mono<Void> enqueueRetry(String eventId, String clientId, Duration delay);
-
-    /** Envia a la cola muerta lo que ya no se va a reintentar, para inspeccion posterior. */
-    Mono<Void> sendToDeadLetter(String eventId, String clientId, String reason);
 }

@@ -97,11 +97,6 @@
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="PbNY30MPL190CjEdveRk-183" edge="1" parent="1" source="PbNY30MPL190CjEdveRk-170" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=12;jumpStyle=arc;jumpSize=10;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" target="PbNY30MPL190CjEdveRk-164" value="reintentos agotados">
-          <mxGeometry relative="1" x="0.7019" as="geometry">
-            <mxPoint as="offset" />
-          </mxGeometry>
-        </mxCell>
         <mxCell id="PbNY30MPL190CjEdveRk-185" edge="1" parent="1" source="PbNY30MPL190CjEdveRk-168" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=12;jumpStyle=arc;jumpSize=10;exitX=0;exitY=0.75;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;" target="PbNY30MPL190CjEdveRk-173" value="persiste">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">

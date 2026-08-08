@@ -72,7 +72,6 @@ class DeliverNotificationEventServiceTest {
         // update(previous, updated) devuelve el evento ya transicionado.
         when(events.update(any(), any())).thenAnswer(call -> Mono.just(call.getArgument(1)));
         when(deliveryQueue.enqueueRetry(anyString(), anyString(), any())).thenReturn(Mono.empty());
-        when(deliveryQueue.sendToDeadLetter(anyString(), anyString(), anyString())).thenReturn(Mono.empty());
     }
 
     private NotificationEvent pendingEvent() {
@@ -182,7 +181,8 @@ class DeliverNotificationEventServiceTest {
         assertThat(saved.getValue().attempts()).isEqualTo(3);
         assertThat(saved.getValue().deliveryStatus().isReplayable()).isTrue();
 
-        verify(deliveryQueue).sendToDeadLetter(eq(EVENT_ID), eq(CLIENT_ID), anyString());
+        // Un ciclo agotado no va a la cola muerta: se proceso hasta el final.
+        verify(deliveryQueue, never()).enqueueRetry(anyString(), anyString(), any());
         verify(deliveryQueue, never()).enqueueRetry(anyString(), anyString(), any());
         verify(metrics).deliverySettled(EVENT_TYPE, DeliveryStatus.FAILED, true);
     }
@@ -199,7 +199,8 @@ class DeliverNotificationEventServiceTest {
                 .verifyComplete();
 
         verify(deliveryQueue, never()).enqueueRetry(anyString(), anyString(), any());
-        verify(deliveryQueue).sendToDeadLetter(eq(EVENT_ID), eq(CLIENT_ID), anyString());
+        // Un ciclo agotado no va a la cola muerta: se proceso hasta el final.
+        verify(deliveryQueue, never()).enqueueRetry(anyString(), anyString(), any());
     }
 
     @Test

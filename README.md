@@ -48,7 +48,9 @@ Tres ejecutables sobre una misma librería. El bus y la cola de trabajo cumplen 
 distintos: Kafka reparte lo que la plataforma publica, y SQS es donde espera cada entrega
 pendiente con su reintento programado.
 
-La línea punteada es el redrive automático de SQS; el resto son llamadas del componente.
+La línea punteada es el redrive de SQS, la única que no origina ningún componente: tras cinco
+entregas fallidas mueve el mensaje solo. A la DLQ solo se llega por ahí — un ciclo de reintentos
+agotado no va a parar allí, porque se proceso hasta el final y queda registrado como `failed`.
 
 ### Tres componentes desplegables
 
@@ -164,7 +166,7 @@ sequenceDiagram
     participant Q as SQS
     participant W as worker
     participant C as Webhook del cliente
-    participant D as DLQ
+    participant DB as DynamoDB
 
     loop hasta agotar los intentos
         W->>Q: pide mensajes
@@ -173,11 +175,19 @@ sequenceDiagram
         C-->>W: 503
         W->>Q: reencola con retardo
     end
-    W->>D: deriva el mensaje a la DLQ
-    Note over W: failed · habilitado para reenvío manual
+    W->>DB: failed · cierra el ciclo
+    W->>Q: borra el mensaje
+    Note over W: habilitado para reenvío manual
 ```
 
-El evento queda en `failed` con su bitácora completa y el mensaje se deriva a la DLQ.
+El evento queda en `failed` con su bitácora completa, y el mensaje se borra de la cola porque
+se proceso hasta el final.
+
+**No va a la DLQ.** Esa cola se reserva para lo que la aplicación no pudo procesar —un mensaje
+corrupto, una caída a mitad—, y ahí llega solo por el redrive de SQS. Mezclar ambas cosas la
+llenaba de eventos que ya tenían desenlace, y quien la mirase reenviaría a mano notificaciones
+posiblemente ya entregadas. Separadas, cualquier mensaje en la DLQ significa que algo se rompió
+de nuestro lado.
 
 Las respuestas 4xx no llegan aquí: se clasifican como fallo permanente y no se reintentan.
 

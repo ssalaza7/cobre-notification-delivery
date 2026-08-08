@@ -230,7 +230,6 @@ sequenceDiagram
                 W->>DB: COMPLETED
             else 4xx de contrato
                 W->>DB: FAILED (no se reintenta)
-                W->>Q: DLQ
             else 5xx · 429 · timeout
                 W->>DB: RETRYING (bloqueo optimista)
                 W->>Q: reintento con backoff + jitter
@@ -570,7 +569,9 @@ exactly-once de extremo a extremo sería inexacto.
    es Secrets Manager, con permisos separados: la api crea, el worker lee. Obliga además a una
    caché de vigencia corta, porque hoy la suscripción se lee en cada intento y ahí cada lectura
    pasaría a ser una llamada facturada.
-5. **La DLQ no dispone de reproceso automático** ni de alarma por profundidad.
+5. **La DLQ no dispone de reproceso automático** ni de alarma por profundidad. Solo recibe
+   mensajes que la aplicación no pudo procesar, así que cualquier cosa que aparezca ahí es un
+   fallo propio; falta conectarle la alarma que eso merece.
 6. **La siembra de demostración corre en los tres ejecutables.** Vive en la librería
    compartida, así que los tres la ejecutan al arrancar. Es inofensiva —la escritura converge
    al mismo ítem— pero su sitio es un solo módulo.

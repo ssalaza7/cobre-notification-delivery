@@ -88,18 +88,6 @@ class SqsDeliveryQueueAdapterTest {
     }
 
     @Test
-    @DisplayName("lo agotado va a la cola muerta con el motivo")
-    void envia_a_la_cola_muerta() {
-        StepVerifier.create(adapter.sendToDeadLetter("EVT001", "CLIENT002", "reintentos agotados"))
-                .verifyComplete();
-
-        SendMessageRequest peticion = capturar();
-        assertThat(peticion.queueUrl()).isEqualTo(DLQ);
-        assertThat(peticion.messageAttributes().get("reason").stringValue())
-                .isEqualTo("reintentos agotados");
-    }
-
-    @Test
     @DisplayName("un fallo de SQS se propaga: el consumidor no confirmara su mensaje")
     void propaga_el_fallo() {
         when(sqs.sendMessage(any(SendMessageRequest.class)))

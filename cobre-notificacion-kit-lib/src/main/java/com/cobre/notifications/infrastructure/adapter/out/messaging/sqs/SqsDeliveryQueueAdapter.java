@@ -7,12 +7,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
 import software.amazon.awssdk.services.sqs.SqsAsyncClient;
-import software.amazon.awssdk.services.sqs.model.MessageAttributeValue;
 import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.Duration;
-import java.util.Map;
 
 /**
  * Adaptador de salida hacia SQS.
@@ -47,18 +45,12 @@ public class SqsDeliveryQueueAdapter implements DeliveryQueuePort {
 
     @Override
     public Mono<Void> enqueue(String eventId, String clientId) {
-        return send(properties.deliveryQueueUrl(), eventId, clientId, Duration.ZERO, Map.of());
+        return send(properties.deliveryQueueUrl(), eventId, clientId, Duration.ZERO);
     }
 
     @Override
     public Mono<Void> enqueueRetry(String eventId, String clientId, Duration delay) {
-        return send(properties.deliveryQueueUrl(), eventId, clientId, capped(delay), Map.of());
-    }
-
-    @Override
-    public Mono<Void> sendToDeadLetter(String eventId, String clientId, String reason) {
-        return send(properties.deadLetterQueueUrl(), eventId, clientId, Duration.ZERO,
-                Map.of("reason", attribute(reason)));
+        return send(properties.deliveryQueueUrl(), eventId, clientId, capped(delay));
     }
 
     /**
@@ -76,18 +68,11 @@ public class SqsDeliveryQueueAdapter implements DeliveryQueuePort {
         return SqsProperties.MAX_DELAY;
     }
 
-    private Mono<Void> send(
-            String queueUrl,
-            String eventId,
-            String clientId,
-            Duration delay,
-            Map<String, MessageAttributeValue> attributes) {
-
+    private Mono<Void> send(String queueUrl, String eventId, String clientId, Duration delay) {
         SendMessageRequest request = SendMessageRequest.builder()
                 .queueUrl(queueUrl)
                 .messageBody(objectMapper.writeValueAsString(new DeliveryCommandMessage(eventId, clientId)))
                 .delaySeconds((int) delay.toSeconds())
-                .messageAttributes(attributes)
                 .build();
 
         return Mono.fromFuture(() -> sqs.sendMessage(request))
@@ -95,7 +80,4 @@ public class SqsDeliveryQueueAdapter implements DeliveryQueuePort {
                 .then();
     }
 
-    private MessageAttributeValue attribute(String value) {
-        return MessageAttributeValue.builder().dataType("String").stringValue(value).build();
-    }
 }

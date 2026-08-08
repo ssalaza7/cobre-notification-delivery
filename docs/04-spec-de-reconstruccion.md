@@ -210,6 +210,10 @@ Cinco intentos. Escalones explícitos: 5s, 30s, 2m, 10m, 15m, con jitter del 20 
   alcanza el siguiente.
 - **Se reintenta solo lo que puede mejorar.** 5xx, 408, 429, timeouts y errores de conexión sí;
   un 400 o un 404 no, porque el problema está en el payload o en la ruta.
+- **Un ciclo agotado no se publica en la cola muerta.** Se procesó hasta el final y quedó
+  registrado como fallido, con su bitácora y su endpoint de reenvío. La cola muerta se reserva
+  para lo que la aplicación no pudo procesar —mensajes corruptos, caídas a mitad—, y así su
+  profundidad es una alarma que no suena en falso.
 - **Sin suscripción activa el evento se descarta**, no se reintenta. Y conviene que eso deje
   señal: si el bus no debería traer eventos de clientes sin suscripción, un descarte es una
   anomalía del productor.

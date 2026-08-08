@@ -160,15 +160,23 @@ public class DeliverNotificationEventService implements DeliverNotificationEvent
 
     private Mono<DeliveryOutcome> failDefinitively(
             NotificationEvent event, WebhookDeliveryResult result, Instant now, String reason) {
+        // No se publica nada en la cola muerta. Un ciclo agotado no es un mensaje que
+        // no se pudo procesar: se proceso hasta el final y termino en fallo, que es lo
+        // que registran el estado del evento y su bitacora. Encolarlo alli lo dejaria
+        // en un sitio cuyo convenio dice "esto hay que reprocesarlo", y quien lo viera
+        // reenviaria a mano notificaciones que quiza ya se entregaron por otra via.
+        //
+        // La cola muerta queda entonces para lo que si lo es: mensajes que la
+        // aplicacion nunca pudo procesar. Y como solo llegan por esa via, su
+        // profundidad pasa a ser una alarma que no suena en falso.
         return events.update(event, event.markFailed(result, now))
-                .flatMap(saved -> deliveryQueue.sendToDeadLetter(saved.eventId(), saved.clientId(), reason)
-                        .doOnSuccess(ignored -> {
-                            metrics.deliverySettled(saved.eventType(), saved.deliveryStatus(), saved.attempts() > 1);
-                            log.error("Entrega de {} para el cliente {} fallo definitivamente ({}) "
-                                            + "tras {} intentos; queda disponible para reenvio manual",
-                                    saved.eventId(), saved.clientId(), reason, saved.attempts());
-                        })
-                        .thenReturn(DeliveryOutcome.FAILED))
+                .doOnNext(saved -> {
+                    metrics.deliverySettled(saved.eventType(), saved.deliveryStatus(), saved.attempts() > 1);
+                    log.error("Entrega de {} para el cliente {} fallo definitivamente ({}) "
+                                    + "tras {} intentos; queda disponible para reenvio manual",
+                            saved.eventId(), saved.clientId(), reason, saved.attempts());
+                })
+                .thenReturn(DeliveryOutcome.FAILED)
                 .defaultIfEmpty(DeliveryOutcome.ALREADY_SETTLED);
     }
 
