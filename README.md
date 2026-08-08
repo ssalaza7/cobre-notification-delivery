@@ -190,34 +190,22 @@ Las respuestas 4xx no llegan aquí: se clasifican como fallo permanente y no se 
 
 ### 3.4 La cola de mensajes no entregados
 
-Está para contingencias técnicas, no para fallos de negocio. Esa distinción es lo que la hace
-útil.
+Guarda contingencias técnicas, no fallos de negocio. Un webhook caído, un 4xx o una suscripción
+inexistente terminan en la base como `failed` o `discarded`, con su bitácora y disponibles para
+reenvío. Ahí no llegan.
 
-Un webhook caído, un 4xx del cliente o una suscripción inexistente **no llegan ahí**: terminan
-en la base como `failed` o `discarded`, con su bitácora, y el cliente puede reenviarlos. Son
-desenlaces normales de un sistema que funciona.
+A la DLQ solo va lo que el worker **no pudo procesar**: un mensaje corrupto, el almacén sin
+responder, el proceso muriendo a mitad. El mensaje no se confirma, SQS lo reentrega, y a la
+quinta lo aparta solo. Sin eso, un mensaje envenenado daría vueltas para siempre.
 
-A la DLQ solo se llega cuando el worker **no pudo procesar el mensaje**: viene corrupto y no
-deserializa, el almacén no responde, un error inesperado, o el proceso muere a mitad
-repetidamente. En esos casos el mensaje no se confirma, SQS lo reentrega, y tras cinco
-entregas lo aparta solo. Es la protección contra mensajes envenenados: sin ella uno de esos
-daría vueltas para siempre consumiendo capacidad del worker.
+Por eso su profundidad sirve de alarma: **cualquier mensaje ahí es un fallo propio**.
 
-De ahí que su profundidad sea una alarma limpia: **cualquier mensaje ahí significa un fallo
-propio**. Si también recogiera clientes con el servidor apagado, crecería un martes cualquiera
-y no significaría nada.
+Devolverlos es decisión humana —en AWS, `start-message-move-task`—. Automatizarlo sería un
+bucle: si la causa sigue viva, vuelven a fallar. Es seguro hacerlo, porque el mensaje solo
+lleva el identificador y el worker relee el estado antes de actuar.
 
-Un caso se excluye a propósito: si el mensaje apunta a un evento que no existe, el listener lo
-confirma y deja constancia en el log. Reintentarlo no lo arreglaría.
-
-**Qué hacer cuando aparezca algo.** Devolverlo es una decisión humana, no automática: si la
-causa sigue sin arreglar, los mensajes vuelven a fallar y regresan, en bucle. Primero se
-arregla, después se devuelven —en AWS con `start-message-move-task`—. Hacerlo es seguro,
-porque el mensaje solo lleva el identificador: el worker relee el evento y, si ya se cerró
-entretanto, confirma sin volver a llamar al webhook.
-
-El riesgo es no mirarla. Los mensajes de SQS caducan, así que un evento cuyo mensaje expiró se
-queda en `pending` sin que nada avise, y la única señal sería un backlog que no baja.
+El riesgo es no mirarla: los mensajes caducan, y un evento cuyo mensaje expiró se queda en
+`pending` sin que nada avise.
 
 ---
 
