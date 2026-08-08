@@ -198,7 +198,7 @@ reenvío conserva los intentos del ciclo anterior.
 
 ---
 
-## 3. Arquitectura hexagonal
+## 3. Cómo está implementado: arquitectura hexagonal
 
 ![Arquitectura hexagonal](docs/img/arquitectura-hexagonal.svg)
 
