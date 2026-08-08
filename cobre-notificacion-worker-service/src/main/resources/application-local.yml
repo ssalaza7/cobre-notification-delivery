@@ -20,10 +20,15 @@ cobre:
     block-internal-addresses: false
 
   retry:
-    # Tres intentos en unos diez segundos: alcanza a agotarse mientras se explica, y
-    # sigue siendo backoff exponencial con jitter de verdad.
+    # Tres intentos en cinco minutos. El primer escalon es de un minuto a proposito: es
+    # la ventana para cambiar la respuesta del destino de 503 a 200 y ver una entrega
+    # recuperada. Con escalones de segundos no daba tiempo a hacerlo.
+    #
+    # Tres intentos usan dos esperas: despues del ultimo no hay nada que esperar. El
+    # segundo escalon cuadruplica al primero, asi que una espera con jitter nunca
+    # alcanza a la siguiente.
     max-attempts: 3
-    delays: 3s, 6s, 10s
+    delays: 60s, 4m
 
 
 logging:
