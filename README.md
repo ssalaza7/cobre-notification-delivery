@@ -41,10 +41,6 @@ Dentro del recuadro, lo que se despliega y opera aquí: los tres ejecutables, la
 trabajo y los almacenes. Fuera, lo que pertenece a otros: el bus de la plataforma, el
 proveedor de identidad y el sistema del cliente.
 
-Tres ejecutables sobre una misma librería. El bus y la cola de trabajo cumplen papeles
-distintos: Kafka reparte lo que la plataforma publica, y SQS es donde espera cada entrega
-pendiente con su reintento programado.
-
 La línea punteada es el redrive de SQS, la única que no origina ningún componente: tras cinco
 entregas fallidas mueve el mensaje solo. A la DLQ solo se llega por ahí — un ciclo de reintentos
 agotado no va a parar allí, porque se proceso hasta el final y queda registrado como `failed`.
@@ -65,17 +61,16 @@ Cada uno se despliega por separado y carga solo las dependencias que usa:
 | `worker` | cliente HTTP reactivo, firma HMAC | Kafka, Spring Security |
 | `api` | Spring Security, resource server JWT | Kafka |
 
-### Kafka y SQS
+### La cola de trabajo
 
-Kafka es el bus de la plataforma: no elimina el mensaje al leerlo, de modo que varios servicios
-consumen el mismo evento.
+El bus de entrada lo aprovisiona la plataforma; aquí solo se consume. Lo que sí es decisión de
+este servicio es **no entregar directamente desde él**: la entrega necesita retardo por mensaje
+para el backoff y reparto sin orden, para que un webhook lento no bloquee a los demás clientes.
+De ahí la cola de trabajo intermedia, con su cola de no entregados.
 
-SQS es la cola de trabajo de las entregas. Aporta el retardo por mensaje que implementa el
-backoff (`DelaySeconds`) y la cola de mensajes no entregados (DLQ).
+En local, Redpanda y ElasticMQ hablan los mismos protocolos.
 
-En local son Redpanda y ElasticMQ, que hablan los mismos protocolos.
-
-El razonamiento detrás de esta separación está en el [documento de diseño](docs/01-diseno-del-sistema.md#8-propiedades-exigidas-a-la-infraestructura).
+Las propiedades exigidas a una y otra, en el [documento de diseño](docs/01-diseno-del-sistema.md#8-propiedades-exigidas-a-la-infraestructura).
 
 ---
 
@@ -124,9 +119,7 @@ sequenceDiagram
     W->>Q: borra el mensaje (confirmación)
 ```
 
-Ni Kafka ni SQS empujan: el consumidor y el worker piden con *long polling*.
-
-Entrega **al menos una vez**: el offset de Kafka se confirma tras persistir y el mensaje de SQS
+Entrega **al menos una vez**: el offset del bus se confirma tras persistir y el mensaje de la cola
 se borra tras entregar. La ingesta es idempotente por `event_id` y cada entrega lleva la
 cabecera `X-Cobre-Event-Id` para que el receptor descarte repeticiones.
 
@@ -408,7 +401,7 @@ Los tres que más definen el sistema. El resto, con su alternativa y cuándo se 
 
 | Decisión | Alternativa | Por qué esta |
 |---|---|---|
-| **Kafka como bus, SQS como cola de trabajo** | Solo Kafka | Kafka no tiene retardo por mensaje, y su orden por partición deja que un webhook lento bloquee a los demás clientes |
+| **Cola de trabajo aparte del bus** | Entregar leyendo el bus directamente | El bus no da retardo por mensaje, y su orden por partición deja que un webhook lento bloquee a los demás clientes |
 | **DynamoDB para eventos e intentos** | PostgreSQL para todo | El flujo solo accede por `event_id` y lista por cliente y fecha: ambas son consultas por clave, y la bitácora crece sin techo |
 | **Entrega al menos una vez** | Confirmar antes de procesar | Un duplicado que el cliente descarta cuesta menos que un pago no notificado |
 
