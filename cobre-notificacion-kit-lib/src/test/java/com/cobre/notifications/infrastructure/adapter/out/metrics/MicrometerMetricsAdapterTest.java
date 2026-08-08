@@ -94,12 +94,25 @@ class MicrometerMetricsAdapterTest {
         adapter.deliverySettled("credit_transfer", DeliveryStatus.COMPLETED, true);
         adapter.deliverySettled("credit_transfer", DeliveryStatus.FAILED, true);
 
-        assertThat(registry.counter("cobre.notification.settled", "event_type", "credit_transfer",
+        // Sin event_type: lo fija la plataforma y su conjunto no esta acotado.
+        assertThat(registry.counter("cobre.notification.settled",
                 "status", "completed", "after_retries", "false").count()).isEqualTo(1);
-        assertThat(registry.counter("cobre.notification.settled", "event_type", "credit_transfer",
+        assertThat(registry.counter("cobre.notification.settled",
                 "status", "completed", "after_retries", "true").count()).isEqualTo(1);
-        assertThat(registry.counter("cobre.notification.settled", "event_type", "credit_transfer",
+        assertThat(registry.counter("cobre.notification.settled",
                 "status", "failed", "after_retries", "true").count()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("los contadores existen en cero antes de que ocurra nada")
+    void los_contadores_arrancan_en_cero() {
+        // Sin esto, la serie aparece valiendo 1 y `increase` no tiene con que compararla:
+        // la primera entrega de cada tipo no se contaria en ningun panel.
+        assertThat(registry.counter("cobre.notification.settled",
+                "status", "completed", "after_retries", "true").count()).isZero();
+        assertThat(registry.counter("cobre.notification.settled",
+                "status", "failed", "after_retries", "false").count()).isZero();
+        assertThat(registry.counter("cobre.notification.replay.requested").count()).isZero();
     }
 
     @Test
@@ -113,8 +126,7 @@ class MicrometerMetricsAdapterTest {
                 .isEqualTo(1);
         assertThat(registry.counter("cobre.notification.retry.scheduled",
                 "event_type", "debit_purchase", "attempt", "2").count()).isEqualTo(1);
-        assertThat(registry.counter("cobre.notification.replay.requested",
-                "event_type", "debit_purchase").count()).isEqualTo(1);
+        assertThat(registry.counter("cobre.notification.replay.requested").count()).isEqualTo(1);
     }
 
     private double gauge(String status) {

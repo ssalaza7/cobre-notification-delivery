@@ -56,7 +56,24 @@ public class MicrometerMetricsAdapter implements MetricsPort {
             AtomicLong holder = new AtomicLong();
             backlog.put(status, holder);
             registry.gauge(BACKLOG, Tags.of("status", status.apiValue()), holder);
+
+            // Los contadores se registran en cero al arrancar, aunque todavia no haya
+            // pasado nada. Una serie que aparece valiendo 1 no tiene con que comparar,
+            // asi que `increase` la lee como cero y la primera ocurrencia de cada tipo
+            // no se contaria nunca: el panel empezaria a marcar desde la segunda.
+            for (boolean afterRetries : new boolean[] {false, true}) {
+                settled(status, afterRetries);
+            }
         }
+        registry.counter(REPLAYS);
+    }
+
+    private io.micrometer.core.instrument.Counter settled(DeliveryStatus status, boolean afterRetries) {
+        return registry.counter(SETTLED,
+                "status", status.apiValue(),
+                // Separa lo que salio a la primera de lo que se recupero con reintentos:
+                // una entrega recuperada indica un destino inestable aunque termine bien.
+                "after_retries", String.valueOf(afterRetries));
     }
 
     @Override
@@ -85,12 +102,10 @@ public class MicrometerMetricsAdapter implements MetricsPort {
 
     @Override
     public void deliverySettled(String eventType, DeliveryStatus finalStatus, boolean afterRetries) {
-        registry.counter(SETTLED,
-                "event_type", eventType,
-                "status", finalStatus.apiValue(),
-                // Separa lo que salio a la primera de lo que se recupero con reintentos:
-                // una entrega recuperada indica un destino inestable aunque termine bien.
-                "after_retries", String.valueOf(afterRetries)).increment();
+        // El tipo de evento no viaja como etiqueta: lo fija la plataforma y su conjunto
+        // no esta acotado, asi que cada tipo nuevo multiplicaria las series. Ningun
+        // panel lo usa, y sin el se pueden registrar todas las combinaciones al arrancar.
+        settled(finalStatus, afterRetries).increment();
     }
 
     @Override
@@ -105,7 +120,7 @@ public class MicrometerMetricsAdapter implements MetricsPort {
 
     @Override
     public void replayRequested(String eventType) {
-        registry.counter(REPLAYS, "event_type", eventType).increment();
+        registry.counter(REPLAYS).increment();
     }
 
     @Override
