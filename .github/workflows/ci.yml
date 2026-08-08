@@ -1,0 +1,166 @@
+# Pruebas y cobertura.
+#
+# Corre en cada pull request y en cada empuje a las ramas de larga vida. Es la
+# comprobacion que la proteccion de rama exige superar antes de permitir la
+# integracion: sin esto, la regla "solo por pull request" solo ordenaria el
+# flujo, sin garantizar nada del codigo.
+name: Pruebas
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+  # Permite lanzarlo a mano desde la pestaña Actions.
+  workflow_dispatch:
+
+# Un empuje nuevo sobre la misma rama cancela la ejecucion anterior: lo que
+# importa es el veredicto del ultimo commit, no el de uno ya sustituido.
+concurrency:
+  group: pruebas-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  # Para dejar el resumen de cobertura como comentario del pull request.
+  pull-requests: write
+  checks: write
+
+jobs:
+  pruebas:
+    name: Pruebas unitarias y cobertura
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # Cachea las dependencias y los resultados de tareas ya ejecutadas entre
+      # ejecuciones. Solo escribe la cache desde las ramas de larga vida: un
+      # pull request no debe poder envenenarla.
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/develop' }}
+
+      # `build` incluye el gate de cobertura: falla por debajo del 90% de lineas
+      # o de instrucciones. La verificacion vive en build.gradle.kts y no aqui,
+      # para que el mismo umbral se aplique en local.
+      - name: Compilar, probar y verificar cobertura
+        run: ./gradlew build --no-daemon
+
+      - name: Leer la cobertura
+        id: cobertura
+        if: always()
+        run: |
+          informe=build/reports/jacoco/jacocoReporteAgregado/jacocoReporteAgregado.xml
+          if [ ! -f "$informe" ]; then
+            echo "disponible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          python3 - "$informe" <<'PY' >> "$GITHUB_OUTPUT"
+          import sys, xml.etree.ElementTree as ET
+
+          raiz = ET.parse(sys.argv[1]).getroot()
+          # Los <counter> de primer nivel son los agregados de todo el informe.
+          contadores = {c.get("type"): c for c in raiz.findall("counter")}
+
+          def ratio(tipo):
+              c = contadores.get(tipo)
+              if c is None:
+                  return None
+              cubierto, perdido = int(c.get("covered")), int(c.get("missed"))
+              total = cubierto + perdido
+              return 100.0 * cubierto / total if total else 0.0
+
+          print("disponible=true")
+          for clave, tipo in (("lineas", "LINE"), ("instrucciones", "INSTRUCTION"), ("ramas", "BRANCH")):
+              v = ratio(tipo)
+              if v is not None:
+                  print(f"{clave}={v:.1f}")
+          PY
+
+      - name: Contar las pruebas
+        id: recuento
+        if: always()
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import glob, xml.etree.ElementTree as ET
+
+          total = fallos = errores = omitidas = 0
+          for archivo in glob.glob("**/build/test-results/test/TEST-*.xml", recursive=True):
+              suite = ET.parse(archivo).getroot()
+              total += int(suite.get("tests", 0))
+              fallos += int(suite.get("failures", 0))
+              errores += int(suite.get("errors", 0))
+              omitidas += int(suite.get("skipped", 0))
+          print(f"total={total}")
+          print(f"fallidas={fallos + errores}")
+          print(f"omitidas={omitidas}")
+          PY
+
+      - name: Resumen
+        if: always()
+        run: |
+          {
+            echo "## Pruebas"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Ejecutadas | ${{ steps.recuento.outputs.total }} |"
+            echo "| Fallidas | ${{ steps.recuento.outputs.fallidas }} |"
+            echo "| Omitidas | ${{ steps.recuento.outputs.omitidas }} |"
+            echo
+            if [ "${{ steps.cobertura.outputs.disponible }}" = "true" ]; then
+              echo "## Cobertura"
+              echo
+              echo "| Metrica | Cubierto | Minimo exigido |"
+              echo "|---|---|---|"
+              echo "| Lineas | ${{ steps.cobertura.outputs.lineas }}% | 90% |"
+              echo "| Instrucciones | ${{ steps.cobertura.outputs.instrucciones }}% | 90% |"
+              echo "| Ramas | ${{ steps.cobertura.outputs.ramas }}% | sin umbral |"
+            else
+              echo "La cobertura no se pudo calcular: las pruebas no llegaron a terminar."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # El mismo resumen, pegado en el pull request y actualizado en cada
+      # ejecucion en vez de acumular comentarios.
+      - name: Comentar en el pull request
+        if: always() && github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: cobertura
+          message: |
+            ### Pruebas y cobertura
+
+            | | |
+            |---|---|
+            | Pruebas ejecutadas | ${{ steps.recuento.outputs.total }} |
+            | Fallidas | ${{ steps.recuento.outputs.fallidas }} |
+            | Cobertura de lineas | ${{ steps.cobertura.outputs.lineas }}% (minimo 90%) |
+            | Cobertura de instrucciones | ${{ steps.cobertura.outputs.instrucciones }}% (minimo 90%) |
+
+            El informe completo, en los artefactos de la ejecucion.
+
+      - name: Guardar el informe de cobertura
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cobertura
+          path: build/reports/jacoco/jacocoReporteAgregado/html
+          retention-days: 14
+
+      - name: Guardar los resultados de las pruebas
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resultados-de-pruebas
+          path: '**/build/reports/tests/test'
+          retention-days: 14

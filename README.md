@@ -388,6 +388,7 @@ destinos HTTP. En cualquier otro perfil se exige HTTPS y se bloquean las direcci
 | [Seguridad OWASP](docs/02-seguridad-owasp.md) | Task 3 — vulnerabilidades identificadas y mitigaciones |
 | [Guía de uso](docs/03-guia-de-uso.md) | Registro de webhooks, tokens, Postman, consolas, receptor de pruebas |
 | [Spec de reconstrucción](docs/04-spec-de-reconstruccion.md) | Qué construir y bajo qué restricciones, para levantarlo desde cero |
+| [Cómo se integra el trabajo](CONTRIBUTING.md) | Ramas, pull requests y qué exige el pipeline antes de integrar |
 
 ---
 
