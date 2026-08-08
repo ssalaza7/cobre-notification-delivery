@@ -100,22 +100,31 @@ public class DynamoDbDemoSeeder {
      * copiarlos del alta. Ninguno vale fuera de aqui.
      */
     private void sembrarSuscripciones() {
-        // Se escribe sin comprobar antes si existe. Consultar y despues escribir no es
-        // atomico, y con los tres ejecutables arrancando a la vez los tres verian la
-        // tabla vacia. La escritura va por clave fija y conserva el secreto con
-        // if_not_exists, asi que repetirla converge al mismo item.
+        // Solo se siembra la que no exista. Escribir siempre pisaria la URL que el
+        // cliente hubiera registrado por la API, y bastaba con reiniciar cualquiera de
+        // los tres ejecutables para perderla.
+        //
+        // Consultar y despues escribir no es atomico, asi que dos ejecutables
+        // arrancando a la vez pueden sembrar la misma. Es inofensivo: escriben el mismo
+        // valor sobre la misma clave. Sobrescribir lo que registro un cliente, no.
         long sembradas = Flux.fromIterable(CLIENTES_DEMO)
-                .concatMap(clientId -> subscriptions.save(new Subscription(
-                        UUID.nameUUIDFromBytes(clientId.getBytes(StandardCharsets.UTF_8)),
-                        clientId,
-                        Subscription.ALL_EVENT_TYPES,
-                        "http://localhost:9090/webhooks/" + clientId,
-                        "whsec_" + clientId.toLowerCase() + "_local_dev_secret",
-                        true)))
+                .concatMap(clientId -> subscriptions.findActiveFor(clientId, Subscription.ALL_EVENT_TYPES)
+                        .hasElement()
+                        .flatMap(existe -> existe
+                                ? Mono.just(false)
+                                : subscriptions.save(new Subscription(
+                                                UUID.nameUUIDFromBytes(clientId.getBytes(StandardCharsets.UTF_8)),
+                                                clientId,
+                                                Subscription.ALL_EVENT_TYPES,
+                                                "http://localhost:9090/webhooks/" + clientId,
+                                                "whsec_" + clientId.toLowerCase() + "_local_dev_secret",
+                                                true))
+                                        .thenReturn(true)))
+                .filter(Boolean::booleanValue)
                 .count()
                 .block();
 
-        log.info("Siembra de demostracion: {} suscripciones aseguradas en DynamoDB", sembradas);
+        log.info("Siembra de demostracion: {} suscripciones nuevas en DynamoDB", sembradas);
     }
 
     private Mono<Boolean> sembrarEvento(JsonNode nodo) {
