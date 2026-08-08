@@ -408,7 +408,7 @@ basada en una versión obsoleta.
 |---|---|---|---|---|
 | 1 · At-least-once | `consumeManualAck` | Visibility timeout | Commit de offset | Igual que RabbitMQ |
 | 2 · Retardo | Cola por escalón con TTL + DLX | `DelaySeconds` nativo | **No lo tiene**: topic por escalón y código propio | Igual que RabbitMQ |
-| 3 · DLQ | DLX + cola muerta | Redrive policy | Topic muerto manual | Igual que RabbitMQ |
+| 3 · DLQ | DLX apuntando a una DLQ | Redrive policy | Topic aparte, a mano | Igual que RabbitMQ |
 | 4 · Sin orden, en competencia | Sí | Sí (cola estándar) | **No**: orden por partición, con bloqueo de cabeza | Sí |
 | 5 · Durabilidad | Mensajes persistentes | Nativa | Nativa | Nativa |
 
