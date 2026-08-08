@@ -5,7 +5,8 @@
 # request directo a main y saltarse develop. Aqui se comprueba el origen.
 #
 #   feature/*, bugfix/*  ->  develop
-#   release/*, hotfix/*  ->  main   (y de vuelta a develop)
+#   release/*, hotfix/*  ->  main
+#   main                 ->  develop   (la vuelta, tras cerrar una version)
 name: Flujo de ramas
 
 on:
@@ -42,8 +43,13 @@ jobs:
               case "$ORIGEN" in
                 feature/*|bugfix/*|release/*|hotfix/*)
                   echo "De $ORIGEN a develop: correcto." ;;
+                # La vuelta tras cerrar una version. Sin esta salvedad, lo que se
+                # corrigiera durante el cierre se quedaria solo en main y se perderia
+                # en la version siguiente.
+                main)
+                  echo "De main a develop: la vuelta tras cerrar una version." ;;
                 *)
-                  echo "::error::A develop se integra desde feature/*, bugfix/*, release/* o hotfix/*, y '$ORIGEN' no lo es."
+                  echo "::error::A develop se integra desde feature/*, bugfix/*, release/*, hotfix/* o main, y '$ORIGEN' no lo es."
                   echo "::error::Renombra la rama con el prefijo que corresponda y vuelve a abrir el pull request."
                   exit 1 ;;
               esac ;;
