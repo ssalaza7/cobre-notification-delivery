@@ -322,6 +322,7 @@ npx newman run postman/cobre-notification-delivery.postman_collection.json
 | **Kafka** | http://localhost:8085 | El topic, sus mensajes y el grupo de consumo |
 | **SQS** | http://localhost:9325 | La cola de entrega y la DLQ, con su profundidad |
 | **Base de datos** | http://localhost:8086 | Las tablas de DynamoDB y sus ítems |
+| **Secretos** | http://localhost:4566 | LocalStack: las claves de firma, por API |
 | **Identidad** | http://localhost:8087 | Clientes y alcances en Keycloak (`admin` / `admin`) |
 
 ### Empezar de cero
@@ -394,5 +395,5 @@ Los tres que más definen el sistema. El resto, con su alternativa y cuándo se 
 1. **No hay circuit breaker por cliente.**
 2. **El límite de tasa es por instancia**, no global.
 3. **No hay pruebas de integración con infraestructura real.** Pendiente: Testcontainers.
-4. **El secreto de firma del webhook se almacena en texto plano**, en el ítem de la suscripción. Pendiente: moverlo a Secrets Manager, con caché en el worker.
+4. **La caché de suscripciones retrasa una rotación de secreto** hasta un minuto. Es el precio de no consultar el almacén en cada intento.
 5. **La DLQ no tiene reproceso automático** ni alarma por profundidad. Devolver mensajes es una decisión humana, a propósito; la alarma sí falta.

@@ -16,6 +16,16 @@ cobre:
     # vez de procesar cada una el mismo evento.
     group-id: ${KAFKA_GROUP:notification-delivery-service}
 
+  # Secretos de firma de los webhooks. Fuera de la tabla a proposito: quien la lea ve
+  # a donde se entrega, pero no puede firmar. La api los crea, el worker los lee.
+  secrets:
+    region: ${AWS_REGION:us-east-1}
+    endpoint: ${SECRETS_ENDPOINT:}
+    signing-key-prefix: ${SECRETS_PREFIX:cobre/webhook-signing/}
+    # El destino se resuelve en cada intento y cada lectura del almacen se factura. A
+    # cambio, un secreto rotado tarda hasta este plazo en aplicarse.
+    cache-ttl: ${SECRETS_CACHE_TTL:60s}
+
   # Almacen de notificaciones e intentos de entrega.
   dynamodb:
     region: ${AWS_REGION:us-east-1}

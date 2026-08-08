@@ -9,6 +9,10 @@ cobre:
     # ejecutando en la maquina y dentro de la red de compose.
     endpoint: ${SQS_ENDPOINT:http://localhost:9324}
 
+  secrets:
+    # LocalStack. Misma variable dentro y fuera de la red de compose.
+    endpoint: ${SECRETS_ENDPOINT:http://localhost:4566}
+
   dynamodb:
     # DynamoDB Local. Misma variable dentro y fuera de la red de compose.
     endpoint: ${DYNAMODB_ENDPOINT:http://localhost:8000}
