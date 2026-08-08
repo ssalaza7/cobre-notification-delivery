@@ -20,30 +20,12 @@ GET  /subscriptions                    las suscripciones del cliente
 
 [![Arquitectura del servicio](docs/img/arquitectura.svg)](docs/img/arquitectura.svg)
 
-Ni el bus ni la cola empujan: el `consumer service` y el `worker service` piden con long
-polling, y por eso esas flechas salen de ellos. La punteada es el redrive de SQS —tras cinco
-entregas fallidas mueve el mensaje solo—, la única que no la origina ningún componente.
-
 > Editable en [`docs/img/Diagrama arquitectura.drawio`](docs/img/Diagrama%20arquitectura.drawio).
 
+Dentro del recuadro, lo que se despliega y opera aquí. Fuera, lo que pertenece a otros: el bus
+de la plataforma, el proveedor de identidad y el sistema del cliente.
 
-
-
-Dos caminos. El de la izquierda es automatico: un evento entra por el bus y sale por el
-webhook del cliente. El de la derecha lo inicia el cliente cuando consulta o pide un reenvio.
-Se cruzan en un solo punto, el `worker`.
-
-Ni el bus ni la cola empujan: el `consumer` y el `worker` piden con long polling. Las lineas
-punteadas son los tres ejecutables usando los mismos almacenes; que escribe cada uno esta en
-los diagramas de secuencia.
-
-Dentro del recuadro, lo que se despliega y opera aquí: los tres ejecutables, la cola de
-trabajo y los almacenes. Fuera, lo que pertenece a otros: el bus de la plataforma, el
-proveedor de identidad y el sistema del cliente.
-
-La línea punteada es el redrive de SQS, la única que no origina ningún componente: tras cinco
-entregas fallidas mueve el mensaje solo. A la DLQ solo se llega por ahí — un ciclo de reintentos
-agotado no va a parar allí, porque se proceso hasta el final y queda registrado como `failed`.
+La línea punteada es el redrive de SQS: la única que no origina ningún componente.
 
 ### Tres componentes desplegables
 
