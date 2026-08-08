@@ -22,45 +22,51 @@ GET  /subscriptions                    las suscripciones del cliente
 flowchart LR
     SVC["Servicios de la plataforma<br/>pagos · transferencias · saldos"]
     K[("Kafka<br/>cobre.platform.events")]
+    IDP["Proveedor de identidad<br/>OIDC"]
+
+    CON["<b>consumer service</b><br/>ingesta y encola"]
+    API["<b>api rest</b><br/>consulta y reenvío"]
+    W["<b>worker service</b><br/>entrega y reintenta"]
+
     Q[("SQS<br/>cola de entrega")]
     DLQ[("SQS<br/>DLQ")]
+
+    USR["Cliente<br/>consulta y reenvía"]
+    HOOK["Webhook del cliente"]
+
     DB[("DynamoDB<br/>notificaciones + intentos")]
     SUB[("DynamoDB<br/>suscripciones")]
-    IDP["Proveedor de identidad<br/>OIDC"]
-    CLI["Webhook del cliente"]
-    USR["Cliente"]
-
-    subgraph svc["Entrega de notificaciones"]
-        CON["<b>consumer</b><br/>ingesta y encola"]
-        W["<b>worker</b><br/>entrega y reintenta"]
-        API["<b>api</b><br/>consulta y reenvío"]
-    end
 
     SVC -->|publica| K
     CON -->|sondea| K
-    CON -->|persiste| DB
-    CON -->|encola| Q
-    W -->|toma la orden<br/>y reencola reintentos| Q
-    W -->|resuelve destino| SUB
-    W -->|POST firmado HMAC| CLI
-    W -->|reintentos agotados| DLQ
-    Q -.->|mensaje no confirmado| DLQ
-    USR -->|consulta · reenvía| API
+    USR -->|consulta y reenvía| API
     API -->|pide el token| IDP
-    API -->|encola reenvío| Q
+    W -->|POST firmado HMAC| HOOK
+
+    CON -->|encola| Q
+    API -->|encola el reenvío| Q
+    W -->|sondea y reencola| Q
+    W -->|reintentos agotados| DLQ
+    Q -.->|redrive policy| DLQ
+
+    CON -->|persiste| DB
+    API -->|consulta| DB
+    W -->|estado e intento| DB
+    W -->|resuelve destino| SUB
+    API -->|administra| SUB
 
     style CON fill:#1f6feb,color:#fff
-    style W fill:#1f6feb,color:#fff
     style API fill:#1f6feb,color:#fff
+    style W fill:#1f6feb,color:#fff
 ```
 
-La línea punteada es el redrive automático de SQS; el resto son llamadas del componente. Ni el
-bus ni la cola empujan: el `consumer` y el `worker` piden con long polling, y por eso esas
-flechas salen de ellos.
+Ni el bus ni la cola empujan: el `consumer` y el `worker` piden con long polling, y por eso
+esas flechas salen de ellos. La punteada es el redrive de SQS —tras cinco entregas fallidas
+mueve el mensaje solo—, la única que no la origina ningún componente.
 
-De cada almacén sale una sola línea, la de quien escribe primero. Los tres ejecutables leen y
-escriben en ambos: quién hace qué en cada paso está en los diagramas de secuencia de la
-sección 3, que es donde ese detalle se puede seguir.
+> Versión editable en [`docs/img/Diagrama arquitectura.drawio`](docs/img/Diagrama%20arquitectura.drawio),
+> con la disposición cuidada a mano. Se abre con [draw.io](https://app.diagrams.net).
+
 
 
 Dos caminos. El de la izquierda es automatico: un evento entra por el bus y sale por el
