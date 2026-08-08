@@ -380,12 +380,10 @@ Para dejarlo todo en blanco de una vez, incluidos los clientes de identidad, bas
 ### Apagar
 
 ```bash
-# Detener, conservando los datos
 docker compose --profile apps --profile observability down
-
-# Detener y borrar tambien DynamoDB, las colas y el realm de identidad
-docker compose --profile apps --profile observability down -v
 ```
+
+Añadiendo `-v` borra también los datos: notificaciones, colas y clientes de identidad.
 
 El perfil `local` acorta los escalones de reintento para poder verlos completos y admite
 destinos HTTP. En cualquier otro perfil se exige HTTPS y se bloquean las direcciones internas.
@@ -421,11 +419,5 @@ Los tres que más definen el sistema. El resto, con su alternativa y cuándo se 
 1. **No hay circuit breaker por cliente.**
 2. **El límite de tasa es por instancia**, no global.
 3. **No hay pruebas de integración con infraestructura real.** Pendiente: Testcontainers.
-4. **El secreto de firma del webhook se almacena en texto plano.** Pendiente: cifrarlo con KMS.
-5. **La DLQ no tiene reproceso automático** ni alarma por profundidad.
-
----
-
-```bash
-docker compose --profile observability down
-```
+4. **El secreto de firma del webhook se almacena en texto plano**, en el ítem de la suscripción. Pendiente: moverlo a Secrets Manager, con caché en el worker.
+5. **La DLQ no tiene reproceso automático** ni alarma por profundidad. Devolver mensajes es una decisión humana, a propósito; la alarma sí falta.
