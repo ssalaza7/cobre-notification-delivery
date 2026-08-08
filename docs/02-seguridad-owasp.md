@@ -226,7 +226,7 @@ historial de git de forma permanente aunque se elimine después, y se propaga a 
 | Dato | Tratamiento | Motivo |
 |---|---|---|
 | Secreto de firma de webhooks | En el ítem de la suscripción; el candidato natural es un almacén de secretos | Permite falsificar notificaciones hacia el cliente |
-| `signing_secret` de webhooks | En base de datos; pendiente de cifrar con KMS | Permite falsificar notificaciones hacia el cliente |
+| Secreto de firma de webhooks | En Secrets Manager, fuera de la tabla. La api crea, el worker lee | Permite falsificar notificaciones hacia el cliente |
 | Secretos de clientes de API | No se almacenan: el proveedor de identidad los custodia | El servicio no puede filtrar lo que no tiene |
 | Credenciales de los contenedores locales | Valores por defecto en el repositorio | Contenedores desechables sin acceso a nada; en entornos reales provienen del gestor |
 
@@ -238,7 +238,7 @@ basta Parameter Store.
 
 **Credenciales de demostración.** Los tres clientes de ejemplo viven en el realm de Keycloak que levanta docker compose, con sus alcances. Sus secretos son de un entorno local desechable y no valen fuera de él; en producción los administra el proveedor de identidad.
 
-**Pendiente:** cifrar el `signing_secret` con KMS; rotación de la clave de firma con ventana de
+**Pendiente:** rotación de la clave de firma con ventana de
 dos claves; escaneo de secretos en CI (`gitleaks`).
 
 ---
@@ -278,7 +278,6 @@ navegador.
 | Prioridad | Acción |
 |---|---|
 | Alta | Allowlist de dominios verificados por cliente, con pinning de la IP resuelta |
-| Alta | Mover los `signing_secret` a Secrets Manager, con caché de vigencia corta en el worker |
 | Alta | Rate limiting en WAF, no en la aplicación |
 | Media | Rotación de secretos de firma con periodo de gracia de dos claves |
 | Media | Bitácora de auditoría de reenvíos |

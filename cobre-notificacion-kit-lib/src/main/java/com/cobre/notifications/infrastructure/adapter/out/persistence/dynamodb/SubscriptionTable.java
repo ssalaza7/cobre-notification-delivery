@@ -24,7 +24,8 @@ final class SubscriptionTable {
     static final String CLIENT_ID = "client_id";
     static final String EVENT_TYPE = "event_type";
     static final String WEBHOOK_URL = "webhook_url";
-    static final String SIGNING_SECRET = "signing_secret";
+    /** Referencia al secreto en el almacen. El valor no vive aqui. */
+    static final String SECRET_REF = "secret_ref";
     static final String ACTIVE = "active";
 
     private static final String SUB_PREFIX = "SUB#";
@@ -52,19 +53,23 @@ final class SubscriptionTable {
         item.put(CLIENT_ID, NotificationTable.s(subscription.clientId()));
         item.put(EVENT_TYPE, NotificationTable.s(subscription.eventType()));
         item.put(WEBHOOK_URL, NotificationTable.s(subscription.webhookUrl()));
-        item.put(SIGNING_SECRET, NotificationTable.s(subscription.signingSecret()));
         item.put(ACTIVE, AttributeValue.fromBool(subscription.active()));
         return item;
     }
 
-    static Subscription toDomain(Map<String, AttributeValue> item) {
+    static String secretRef(Map<String, AttributeValue> item) {
+        return NotificationTable.string(item, SECRET_REF);
+    }
+
+    /** El secreto lo aporta quien llama, tras leerlo del almacen. */
+    static Subscription toDomain(Map<String, AttributeValue> item, String signingSecret) {
         AttributeValue active = item.get(ACTIVE);
         return new Subscription(
                 UUID.fromString(NotificationTable.string(item, ID)),
                 NotificationTable.string(item, CLIENT_ID),
                 NotificationTable.string(item, EVENT_TYPE),
                 NotificationTable.string(item, WEBHOOK_URL),
-                NotificationTable.string(item, SIGNING_SECRET),
+                signingSecret,
                 active != null && Boolean.TRUE.equals(active.bool()));
     }
 }

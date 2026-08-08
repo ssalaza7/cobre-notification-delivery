@@ -137,9 +137,13 @@ Decisiones que deben respetarse:
 |---|---|
 | `CLIENT#{client_id}` | `SUB#{event_type}`, o `SUB#*` para todos los tipos |
 
-La unicidad por tipo de evento sale de la clave de orden. El alta conserva el secreto existente
-con `if_not_exists`: rotarlo en cada cambio de URL rompería la verificación de firma del cliente
-sin avisarle.
+La unicidad por tipo de evento sale de la clave de orden. El alta conserva el secreto existente:
+rotarlo en cada cambio de URL rompería la verificación de firma del cliente sin avisarle.
+
+El ítem guarda la URL y una **referencia** al secreto, nunca su valor: la clave de firma vive en
+un almacén de secretos, tras un permiso distinto. Quien pueda leer la tabla sabe a dónde se
+entrega, pero no puede firmar. El adaptador compone la suscripción leyendo de los dos sitios, de
+modo que el dominio no se entera.
 
 ### Lo que no se guarda
 
@@ -265,9 +269,8 @@ No basta con que compile. Debe comprobarse ejecutando:
 
 Un sistema honesto documenta lo que no resuelve:
 
-- El secreto de firma se guarda en claro. El sitio correcto es un almacén de secretos, y eso
-  obliga a una caché de vigencia corta: sin ella, cada intento sería una llamada facturada.
-- La suscripción se lee en cada intento, incluidos los reintentos.
+- La caché de suscripciones retrasa hasta un minuto un cambio de URL o una rotación de secreto.
+  Es el precio de no llamar al almacén de secretos en cada intento.
 - No hay orden entre entregas del mismo cliente. Es deliberado —el orden global impide el
   paralelismo— pero debe decirse.
 - La bitácora de intentos caduca por TTL; el estado final del evento, no.

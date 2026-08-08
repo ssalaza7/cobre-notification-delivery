@@ -4,12 +4,11 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 
+import com.cobre.notifications.application.port.out.SigningSecretStorePort;
 import com.cobre.notifications.application.port.out.SubscriptionRepositoryPort;
 import com.cobre.notifications.domain.model.Subscription;
 import com.cobre.notifications.infrastructure.config.DynamoDbProperties;
 import com.cobre.notifications.infrastructure.config.WebhookProperties;
-import org.springframework.context.annotation.DependsOn;
-import org.springframework.stereotype.Repository;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import software.amazon.awssdk.services.dynamodb.DynamoDbAsyncClient;
@@ -27,21 +26,22 @@ import software.amazon.awssdk.services.dynamodb.model.ReturnValue;
  * el comodin, de modo que un cliente pueda enviar un tipo concreto a una URL distinta sin
  * duplicar el resto de la configuracion.
  */
-@Repository
-@DependsOn("dynamoDbTableInitializer")
 public class DynamoDbSubscriptionRepositoryAdapter implements SubscriptionRepositoryPort {
 
     private final DynamoDbAsyncClient dynamo;
     private final DynamoDbProperties properties;
     private final WebhookProperties webhookProperties;
+    private final SigningSecretStorePort secretos;
 
     public DynamoDbSubscriptionRepositoryAdapter(
             DynamoDbAsyncClient dynamo,
             DynamoDbProperties properties,
-            WebhookProperties webhookProperties) {
+            WebhookProperties webhookProperties,
+            SigningSecretStorePort secretos) {
         this.dynamo = dynamo;
         this.properties = properties;
         this.webhookProperties = webhookProperties;
+        this.secretos = secretos;
     }
 
     @Override
@@ -76,12 +76,17 @@ public class DynamoDbSubscriptionRepositoryAdapter implements SubscriptionReposi
      */
     @Override
     public Mono<Subscription> save(Subscription subscription) {
+        return secretos.store(subscription.clientId(), subscription.eventType(), subscription.signingSecret())
+                .flatMap(referencia -> escribir(subscription, referencia));
+    }
+
+    private Mono<Subscription> escribir(Subscription subscription, String referencia) {
         Map<String, AttributeValue> valores = Map.of(
                 ":id", NotificationTable.s(subscription.id().toString()),
                 ":clientId", NotificationTable.s(subscription.clientId()),
                 ":eventType", NotificationTable.s(subscription.eventType()),
                 ":webhookUrl", NotificationTable.s(subscription.webhookUrl()),
-                ":signingSecret", NotificationTable.s(subscription.signingSecret()),
+                ":secretRef", NotificationTable.s(referencia),
                 ":active", AttributeValue.fromBool(true));
 
         Map<String, String> nombres = Map.of(
@@ -89,7 +94,7 @@ public class DynamoDbSubscriptionRepositoryAdapter implements SubscriptionReposi
                 "#clientId", SubscriptionTable.CLIENT_ID,
                 "#eventType", SubscriptionTable.EVENT_TYPE,
                 "#webhookUrl", SubscriptionTable.WEBHOOK_URL,
-                "#signingSecret", SubscriptionTable.SIGNING_SECRET,
+                "#secretRef", SubscriptionTable.SECRET_REF,
                 "#active", SubscriptionTable.ACTIVE);
 
         return Mono.fromFuture(() -> dynamo.updateItem(request -> request
@@ -101,12 +106,12 @@ public class DynamoDbSubscriptionRepositoryAdapter implements SubscriptionReposi
                                     #id = if_not_exists(#id, :id),
                                     #clientId = :clientId,
                                     #eventType = :eventType,
-                                    #signingSecret = if_not_exists(#signingSecret, :signingSecret)
+                                    #secretRef = if_not_exists(#secretRef, :secretRef)
                                 """)
                         .expressionAttributeNames(nombres)
                         .expressionAttributeValues(valores)
                         .returnValues(ReturnValue.ALL_NEW)))
-                .map(response -> SubscriptionTable.toDomain(response.attributes()));
+                .map(response -> SubscriptionTable.toDomain(response.attributes(), subscription.signingSecret()));
     }
 
     /** Suscripciones activas del cliente. Una consulta sobre su particion. */
@@ -124,13 +129,13 @@ public class DynamoDbSubscriptionRepositoryAdapter implements SubscriptionReposi
                         // pudiera haberlo cambiado; una replica atrasada entregaria a la
                         // URL anterior.
                         .consistentRead(true)))
-                .flatMapIterable(response -> {
-                    List<Subscription> encontradas = response.items().stream()
-                            .map(SubscriptionTable::toDomain)
-                            .filter(Subscription::active)
-                            .toList();
-                    return encontradas;
-                });
+                .flatMapIterable(response -> response.items())
+                // El secreto no esta en la tabla: se resuelve contra el almacen. Una
+                // referencia rota deja la suscripcion fuera, y el evento acaba
+                // descartado en vez de entregarse sin firmar.
+                .concatMap(item -> secretos.read(SubscriptionTable.secretRef(item))
+                        .map(secreto -> SubscriptionTable.toDomain(item, secreto)))
+                .filter(Subscription::active);
     }
 
     private Map<String, AttributeValue> clave(String clientId, String eventType) {

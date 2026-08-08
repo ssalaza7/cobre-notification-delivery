@@ -28,6 +28,9 @@ dependencies {
     // CompletableFuture, que se envuelve en Mono sin bloquear ningun hilo.
     api("software.amazon.awssdk:dynamodb")
 
+    // Secretos de firma de webhooks: la api los crea, el worker los lee.
+    api("software.amazon.awssdk:secretsmanager")
+
     // Observabilidad: los tres publican metricas y escriben logs correlacionados.
     api("org.springframework.boot:spring-boot-starter-actuator")
     api("io.micrometer:micrometer-registry-prometheus")

@@ -50,9 +50,21 @@ este servicio es **no entregar directamente desde él**: la entrega necesita ret
 para el backoff y reparto sin orden, para que un webhook lento no bloquee a los demás clientes.
 De ahí la cola de trabajo intermedia, con su cola de no entregados.
 
-En local, Redpanda y ElasticMQ hablan los mismos protocolos.
-
 Las propiedades exigidas a una y otra, en el [documento de diseño](docs/01-diseno-del-sistema.md#8-propiedades-exigidas-a-la-infraestructura).
+
+### Dónde vive cada cosa
+
+| Dato | Dónde | Por qué ahí |
+|---|---|---|
+| Eventos y su bitácora de intentos | DynamoDB | Acceso por clave y volumen que crece sin techo |
+| Suscripciones: a dónde entregar | DynamoDB | Se consulta en cada intento, por cliente y tipo |
+| Clave de firma del webhook | Secrets Manager | Es sensible: la api la crea, el worker la lee, y nadie más |
+| Credenciales de la API | Proveedor de identidad | El servicio no guarda ni valida contraseñas |
+
+Nada sensible queda en la tabla: el ítem de la suscripción guarda una referencia al secreto, no
+su valor. La lectura va en caché de vigencia corta porque el almacén factura por llamada.
+
+En local, Redpanda, ElasticMQ, LocalStack y Keycloak hablan los mismos protocolos.
 
 ---
 
@@ -67,6 +79,7 @@ sequenceDiagram
     participant CON as consumer
     participant DB as DynamoDB
     participant PG as DynamoDB · suscripciones
+    participant SM as Secrets Manager
     participant Q as SQS
     participant W as worker
     participant C as Webhook del cliente
@@ -80,6 +93,7 @@ sequenceDiagram
     W->>Q: pide mensajes (espera hasta 20s)
     Q-->>W: orden de entrega
     W->>PG: verifica suscripción activa
+    W->>SM: lee la clave de firma (en caché)
     W->>C: POST + firma HMAC
     C-->>W: 200
     W->>DB: completed · registra el intento
@@ -206,7 +220,7 @@ reenvío conserva los intentos del ciclo anterior.
 |---|---|
 | **Dominio** | El modelo y las reglas: estados, transiciones, política de reintentos. Y los puertos |
 | **Aplicación** | Los casos de uso. Orquestan el dominio y los puertos |
-| **Infraestructura** | Los adaptadores: Kafka, SQS, REST, DynamoDB, OIDC, WebClient, Micrometer |
+| **Infraestructura** | Los adaptadores: Kafka, SQS, REST, DynamoDB, Secrets Manager, OIDC, WebClient, Micrometer |
 
 Las dependencias apuntan siempre hacia adentro. `DominioSinFrameworkTest` falla el build si el
 dominio importa Spring, Kafka o el SDK de AWS.
@@ -322,6 +336,7 @@ npx newman run postman/cobre-notification-delivery.postman_collection.json
 | **Kafka** | http://localhost:8085 | El topic, sus mensajes y el grupo de consumo |
 | **SQS** | http://localhost:9325 | La cola de entrega y la DLQ, con su profundidad |
 | **Base de datos** | http://localhost:8086 | Las tablas de DynamoDB y sus ítems |
+| **Secretos** | http://localhost:4566 | LocalStack: las claves de firma, por API |
 | **Identidad** | http://localhost:8087 | Clientes y alcances en Keycloak (`admin` / `admin`) |
 
 ### Empezar de cero
@@ -339,8 +354,8 @@ curl -X DELETE "http://localhost:9200/_data_stream/cobre-notifications*"
 rm -f logs/*
 docker compose --profile observability rm -sf filebeat prometheus
 
-# 3. Borrar datos: notificaciones, suscripciones y colas
-docker compose rm -sfv dynamodb elasticmq
+# 3. Borrar datos: notificaciones, suscripciones, secretos y colas
+docker compose rm -sfv dynamodb secrets elasticmq
 
 # 4. Levantar de nuevo. Las tablas se recrean y se siembran solas
 docker compose --profile apps --profile observability up -d
@@ -394,5 +409,5 @@ Los tres que más definen el sistema. El resto, con su alternativa y cuándo se 
 1. **No hay circuit breaker por cliente.**
 2. **El límite de tasa es por instancia**, no global.
 3. **No hay pruebas de integración con infraestructura real.** Pendiente: Testcontainers.
-4. **El secreto de firma del webhook se almacena en texto plano**, en el ítem de la suscripción. Pendiente: moverlo a Secrets Manager, con caché en el worker.
+4. **La caché de suscripciones retrasa una rotación de secreto** hasta un minuto. Es el precio de no consultar el almacén en cada intento.
 5. **La DLQ no tiene reproceso automático** ni alarma por profundidad. Devolver mensajes es una decisión humana, a propósito; la alarma sí falta.
