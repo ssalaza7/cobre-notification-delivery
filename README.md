@@ -18,7 +18,9 @@ GET  /subscriptions                    las suscripciones del cliente
 
 ## 1. Arquitectura
 
-![Arquitectura del servicio](docs/img/arquitectura.svg)
+[![Arquitectura del servicio](docs/img/arquitectura.svg)](docs/img/arquitectura.svg)
+
+<sub>El lienzo mide 2012 px y GitHub lo encoge al ancho de la columna. Clic en el diagrama para abrirlo a tamaño completo.</sub>
 
 Ni el bus ni la cola empujan: el `consumer service` y el `worker service` piden con long
 polling, y por eso esas flechas salen de ellos. La punteada es el redrive de SQS —tras cinco
